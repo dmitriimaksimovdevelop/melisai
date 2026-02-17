@@ -1,0 +1,8 @@
+main;do_work;compute_hash;sha256_update 1523
+main;do_work;compute_hash;sha256_final 891
+main;do_work;io_submit;submit_bio;blk_mq_submit 472
+main;handle_request;process_data;memcpy 3102
+main;handle_request;send_response;tcp_sendmsg 1456
+idle;cpu_idle;default_idle 52341
+main;malloc;__libc_malloc;_int_malloc 234
+main;do_work;lock_contention;futex_wait 891

@@ -1,0 +1,32 @@
+# Binaries
+bin/
+*.exe
+
+# Test coverage
+coverage.out
+*.coverprofile
+
+# Build artifacts
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+vendor/
+
+# Context docs (internal)
+context/
+
+# Gemini agent artifacts
+.gemini/
+sysdiag
+.claude/
