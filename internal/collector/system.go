@@ -5,7 +5,6 @@ package collector
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -223,22 +222,4 @@ func readSysctlString(procRoot, path string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(data))
-}
-
-func formatBytes(b int64) string {
-	const (
-		KB = 1024
-		MB = KB * 1024
-		GB = MB * 1024
-	)
-	switch {
-	case b >= GB:
-		return fmt.Sprintf("%.1fGB", float64(b)/float64(GB))
-	case b >= MB:
-		return fmt.Sprintf("%.1fMB", float64(b)/float64(MB))
-	case b >= KB:
-		return fmt.Sprintf("%.1fKB", float64(b)/float64(KB))
-	default:
-		return fmt.Sprintf("%dB", b)
-	}
 }

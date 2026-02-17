@@ -204,10 +204,11 @@ func TestGenerateRecommendations(t *testing.T) {
 		t.Error("missing BBR recommendation")
 	}
 
-	// All should have priority ordering
+	// All should have increasing priority
 	for i := 1; i < len(recs); i++ {
-		if recs[i].Priority <= recs[i-1].Priority {
-			// acceptable (same priority)
+		if recs[i].Priority < recs[i-1].Priority {
+			t.Errorf("recommendation priority out of order: [%d].Priority=%d < [%d].Priority=%d",
+				i, recs[i].Priority, i-1, recs[i-1].Priority)
 		}
 	}
 }
