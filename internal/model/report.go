@@ -70,10 +70,21 @@ func ComputeUSEMetrics(report *Report) map[string]USEMetric {
 		for _, r := range sysResults {
 			if container, ok := r.Data.(*ContainerData); ok && container.Runtime != "none" {
 				if container.CPUQuota > 0 && container.CPUPeriod > 0 {
-					// Cgroup CPU utilization
-					resources["container_cpu"] = USEMetric{
-						Utilization: float64(container.CPUThrottledPeriods),
-						Saturation:  float64(container.CPUThrottledTime) / 1e6, // us → seconds
+					// Cgroup CPU utilization: throttled time as % of total allowed CPU time.
+					// CPUThrottledTime is in microseconds, CPUQuota/CPUPeriod define the allowed ratio.
+					allowedCPURatio := float64(container.CPUQuota) / float64(container.CPUPeriod)
+					if allowedCPURatio > 0 && container.CPUThrottledTime > 0 {
+						// Utilization = percentage of throttled time vs total CPU budget
+						throttledSec := float64(container.CPUThrottledTime) / 1e6
+						resources["container_cpu"] = USEMetric{
+							Utilization: throttledSec / allowedCPURatio * 100,
+							Saturation:  float64(container.CPUThrottledPeriods), // queue depth: how often throttling occurred
+						}
+					} else {
+						resources["container_cpu"] = USEMetric{
+							Utilization: 0,
+							Saturation:  float64(container.CPUThrottledPeriods),
+						}
 					}
 				}
 				if container.MemoryLimit > 0 {

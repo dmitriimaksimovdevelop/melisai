@@ -35,7 +35,7 @@ func (c *SystemCollector) Available() Availability {
 func (c *SystemCollector) Collect(ctx context.Context, cfg CollectConfig) (*model.Result, error) {
 	start := time.Now()
 
-	sysInfo := model.SystemInfo{}
+	sysInfo := &model.SystemInfo{}
 
 	// OS identification
 	sysInfo.OS = c.readOSRelease()
@@ -187,9 +187,20 @@ func (c *SystemCollector) collectDmesg(ctx context.Context) []model.LogEntry {
 		if line == "" {
 			continue
 		}
+		// Classify level from dmesg output patterns.
+		// Kernels using dmesg -T output lines like:
+		//   [Mon Jan 15 10:30:00 2024] error: ...
+		// We asked for --level=err,warn, so classify based on content heuristics.
+		level := "warn"
+		lower := strings.ToLower(line)
+		if strings.Contains(lower, "error") || strings.Contains(lower, "fail") ||
+			strings.Contains(lower, "panic") || strings.Contains(lower, "bug:") ||
+			strings.Contains(lower, "oops") || strings.Contains(lower, "segfault") {
+			level = "err"
+		}
 		entries = append(entries, model.LogEntry{
 			Message: line,
-			Level:   "err",
+			Level:   level,
 		})
 	}
 	return entries
