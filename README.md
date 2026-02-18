@@ -29,7 +29,7 @@ melisai implements Brendan Gregg's **USE Method** (Utilization, Saturation, Erro
 ## Quick Start
 
 ```bash
-# Build (requires Go 1.21+)
+# Build (requires Go 1.23+)
 GOOS=linux GOARCH=amd64 go build -o melisai ./cmd/melisai/
 
 # Deploy to server
@@ -247,7 +247,7 @@ go vet ./...
 
 ## Requirements
 
-- **Build**: Go 1.21+
+- **Build**: Go 1.23+
 - **Run (Tier 1)**: Linux (any kernel)
 - **Run (Tier 2)**: bcc-tools (`apt install bpfcc-tools python3-bpfcc` on Ubuntu)
 - **Run (Tier 3)**: Kernel >= 5.8 with BTF/CO-RE support
