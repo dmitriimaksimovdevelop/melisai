@@ -1,5 +1,5 @@
 
-.PHONY: all build clean generate
+.PHONY: all build clean generate test test-integration
 
 all: build
 
@@ -16,6 +16,9 @@ generate:
 
 test:
 	go test ./...
+
+test-integration:
+	bash tests/integration/docker_test.sh
 
 clean:
 	rm -f sysdiag

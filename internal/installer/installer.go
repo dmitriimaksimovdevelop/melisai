@@ -155,12 +155,25 @@ func KernelVersion() (string, error) {
 func BuildPackageSteps(distro *DistroInfo) []PackageSet {
 	kernelVer, _ := KernelVersion()
 
-	// For kernel headers on apt, try version-specific first, then generic
-	aptHeaders := []string{"linux-headers-" + kernelVer}
-	aptPerfTools := []string{"linux-tools-" + kernelVer}
-	// Fallback: generic meta-package if exact version not available
-	if kernelVer != "" {
+	// Distro-aware apt packages: Debian uses different package names than Ubuntu
+	var aptHeaders, aptPerfTools []string
+	switch distro.ID {
+	case "debian":
+		// Debian doesn't have linux-headers-generic or linux-tools-generic
+		if kernelVer != "" {
+			aptHeaders = []string{"linux-headers-" + kernelVer}
+		}
+		aptHeaders = append(aptHeaders, "linux-headers-amd64")
+		aptPerfTools = []string{"linux-perf"}
+	default:
+		// Ubuntu, linuxmint, pop — Ubuntu-style metapackages
+		if kernelVer != "" {
+			aptHeaders = []string{"linux-headers-" + kernelVer}
+		}
 		aptHeaders = append(aptHeaders, "linux-headers-generic")
+		if kernelVer != "" {
+			aptPerfTools = []string{"linux-tools-" + kernelVer}
+		}
 		aptPerfTools = append(aptPerfTools, "linux-tools-generic")
 	}
 
@@ -169,7 +182,7 @@ func BuildPackageSteps(distro *DistroInfo) []PackageSet {
 			Step: "kernel-headers",
 			Packages: map[string][]string{
 				"apt":    aptHeaders,
-				"yum":    {"kernel-devel-" + kernelVer, "kernel-devel"},
+				"yum":    {"kernel-devel"},
 				"dnf":    {"kernel-devel"},
 				"pacman": {"linux-headers"},
 			},
@@ -204,10 +217,10 @@ func BuildPackageSteps(distro *DistroInfo) []PackageSet {
 		{
 			Step: "utilities",
 			Packages: map[string][]string{
-				"apt":    {"iproute2", "sysstat", "procps"},
-				"yum":    {"iproute", "sysstat", "procps-ng"},
-				"dnf":    {"iproute", "sysstat", "procps-ng"},
-				"pacman": {"iproute2", "sysstat", "procps-ng"},
+				"apt":    {"iproute2", "sysstat", "procps", "git"},
+				"yum":    {"iproute", "sysstat", "procps-ng", "git"},
+				"dnf":    {"iproute", "sysstat", "procps-ng", "git"},
+				"pacman": {"iproute2", "sysstat", "procps-ng", "git"},
 			},
 		},
 	}
