@@ -28,7 +28,7 @@ context/
 
 # Gemini agent artifacts
 .gemini/
-melisai
+/melisai
 .claude/
 collector.test
 *.test
