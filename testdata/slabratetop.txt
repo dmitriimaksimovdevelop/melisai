@@ -1,0 +1,6 @@
+CACHE                          ALLOCS      FREES     ACTIVE  SIZE
+dentry                         12500       11800       700  192
+inode_cache                     8500        8200       300  608
+ext4_inode_cache                5200        5100       100  1080
+radix_tree_node                 3200        3100       100  584
+kmalloc-256                     2800        2700       100  256

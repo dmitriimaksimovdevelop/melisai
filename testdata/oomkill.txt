@@ -1,0 +1,4 @@
+COMM             PID    PAGES  TOTALPAGES  TRIGGERED_BY
+java             12345  524288 1048576     kswapd0
+mysqld           23456  262144 524288      chrome
+python3          34567  131072 262144      oom_reaper

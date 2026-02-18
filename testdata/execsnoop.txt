@@ -1,0 +1,6 @@
+PCOMM            PID    PPID   RET ARGS
+bash             1234   1000     0 /bin/bash
+ls               1235   1234     0 /bin/ls -la /tmp
+grep             1236   1234     0 /bin/grep pattern file.txt
+python3          1237   1000     0 /usr/bin/python3 script.py
+curl             1238   1234     0 /usr/bin/curl -s http://localhost:8080

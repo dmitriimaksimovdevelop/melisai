@@ -1,0 +1,9 @@
+FUNC                                    COUNT
+tcp_sendmsg                             45000
+tcp_recvmsg                             42000
+tcp_v4_rcv                              38000
+tcp_transmit_skb                        35000
+tcp_ack                                 32000
+tcp_cleanup_rbuf                        28000
+tcp_write_xmit                          25000
+tcp_push                                18000

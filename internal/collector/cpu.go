@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -85,6 +86,27 @@ func (c *CPUCollector) Collect(ctx context.Context, cfg CollectConfig) (*model.R
 	// CFS scheduler parameters
 	data.SchedLatencyNS = readSysctlInt64(c.procRoot, "sys/kernel/sched_latency_ns")
 	data.SchedMinGranularityNS = readSysctlInt64(c.procRoot, "sys/kernel/sched_min_granularity_ns")
+
+	// CPU PSI pressure
+	c.parseCPUPSI(data)
+
+	// Observer-effect compensation: subtract sysdiag's own CPU usage
+	if cfg.PIDTracker != nil {
+		overhead := cfg.PIDTracker.SnapshotAfter()
+		intervalMs := interval.Seconds() * 1000
+		if intervalMs > 0 && data.NumCPUs > 0 {
+			userCompensation := float64(overhead.CPUUserMs) / intervalMs * 100 / float64(data.NumCPUs)
+			sysCompensation := float64(overhead.CPUSystemMs) / intervalMs * 100 / float64(data.NumCPUs)
+			data.EstimatedUserPct = data.UserPct - userCompensation
+			data.EstimatedSystemPct = data.SystemPct - sysCompensation
+			if data.EstimatedUserPct < 0 {
+				data.EstimatedUserPct = 0
+			}
+			if data.EstimatedSystemPct < 0 {
+				data.EstimatedSystemPct = 0
+			}
+		}
+	}
 
 	return &model.Result{
 		Collector: c.Name(),
@@ -169,8 +191,16 @@ func (c *CPUCollector) computeDelta(before, after cpuTimes) *model.CPUData {
 }
 
 func (c *CPUCollector) computePerCPUDeltas(before, after map[int]cpuTimes) []model.PerCPU {
+	// Collect and sort CPU numbers for deterministic output order
+	cpuNums := make([]int, 0, len(after))
+	for cpuNum := range after {
+		cpuNums = append(cpuNums, cpuNum)
+	}
+	sort.Ints(cpuNums)
+
 	var result []model.PerCPU
-	for cpuNum, afterTimes := range after {
+	for _, cpuNum := range cpuNums {
+		afterTimes := after[cpuNum]
 		beforeTimes, ok := before[cpuNum]
 		if !ok {
 			continue
@@ -188,6 +218,36 @@ func (c *CPUCollector) computePerCPUDeltas(before, after map[int]cpuTimes) []mod
 		})
 	}
 	return result
+}
+
+func (c *CPUCollector) parseCPUPSI(data *model.CPUData) {
+	f, err := os.Open(filepath.Join(c.procRoot, "pressure", "cpu"))
+	if err != nil {
+		return // PSI not available (kernel < 4.20)
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		fields := strings.Fields(line)
+		if len(fields) < 3 || fields[0] != "some" {
+			continue
+		}
+		for _, field := range fields[1:] {
+			parts := strings.SplitN(field, "=", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			val, _ := strconv.ParseFloat(parts[1], 64)
+			switch parts[0] {
+			case "avg10":
+				data.PSISome10 = val
+			case "avg60":
+				data.PSISome60 = val
+			}
+		}
+	}
 }
 
 func (c *CPUCollector) readLoadAvg() (float64, float64, float64) {

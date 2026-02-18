@@ -1,0 +1,11 @@
+SYSCALL                   COUNT
+futex                     125000
+epoll_wait                 98000
+read                       85000
+write                      72000
+close                      45000
+openat                     32000
+stat                       28000
+mmap                       15000
+brk                         8000
+ioctl                       5000

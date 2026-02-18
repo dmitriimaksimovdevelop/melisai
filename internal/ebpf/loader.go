@@ -4,14 +4,38 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"path/filepath"
+
+	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/link"
 )
 
 // ProgramSpec describes a native eBPF program to load.
 type ProgramSpec struct {
 	Name       string
 	Category   string
-	ObjectFile string // path to compiled .o (bpf2go output)
+	ObjectFile string // path to compiled .o
 	MapNames   []string
+	AttachTo   string // kprobe function name
+	Section    string // section name in .o executable (e.g. kprobe/tcp_retransmit_skb)
+}
+
+// LoadedProgram represents a running BPF program.
+type LoadedProgram struct {
+	Spec       *ProgramSpec
+	Collection *ebpf.Collection
+	Link       link.Link
+}
+
+// Close cleans up resources.
+func (p *LoadedProgram) Close() error {
+	if p.Link != nil {
+		p.Link.Close()
+	}
+	if p.Collection != nil {
+		p.Collection.Close()
+	}
+	return nil
 }
 
 // Loader handles loading and unloading native eBPF programs.
@@ -43,97 +67,78 @@ func (e *LoadError) Error() string {
 	return fmt.Sprintf("BPF program %q: %v", e.Program, e.Err)
 }
 
-// TryLoad attempts to load a BPF program. On failure, returns an error
-// that the caller should use to fall back to Tier 2.
-// This is a stub — actual BPF loading requires cilium/ebpf integration
-// with bpf2go-generated code that must be compiled on Linux.
-func (l *Loader) TryLoad(ctx context.Context, spec *ProgramSpec) error {
+// TryLoad attempts to load a BPF program.
+func (l *Loader) TryLoad(ctx context.Context, spec *ProgramSpec) (*LoadedProgram, error) {
 	if !l.CanLoad() {
-		return &LoadError{
+		return nil, &LoadError{
 			Program: spec.Name,
 			Err:     fmt.Errorf("BTF/CO-RE not available (kernel %s)", l.btfInfo.KernelVersion),
 		}
 	}
 
-	// In a real implementation, this would:
 	// 1. Load the compiled BPF object
-	// 2. Attach to kprobes/tracepoints
-	// 3. Create perf event arrays
-	//
-	// For now, return an error indicating this is a stub
-	// that triggers the Tier 2 fallback gracefully.
-	if l.verbose {
-		log.Printf("[ebpf] would load %s (BTF: %s, CO-RE: %v)",
-			spec.Name, l.btfInfo.VmlinuxPath, l.btfInfo.CORESupport)
+	// We assume the object file is relative to executable or CWD
+	// Real implementation might search in a standard path
+	path := spec.ObjectFile
+	if !filepath.IsAbs(path) {
+		// Just use as is, assuming running from root
 	}
 
-	return &LoadError{
-		Program: spec.Name,
-		Err:     fmt.Errorf("native eBPF programs not yet compiled (Phase 3 stub)"),
+	collSpec, err := ebpf.LoadCollectionSpec(path)
+	if err != nil {
+		return nil, &LoadError{Program: spec.Name, Err: fmt.Errorf("load spec: %w", err)}
 	}
+
+	// 2. Instantiate the collection (load into kernel)
+	// We do this simply; genericCO-RE might need more options
+	coll, err := ebpf.NewCollection(collSpec)
+	if err != nil {
+		return nil, &LoadError{Program: spec.Name, Err: fmt.Errorf("load collection: %w", err)}
+	}
+
+	// 3. Attach kprobe
+	// Find the program
+	prog := coll.Programs[spec.Section]
+	if prog == nil {
+		// Try to find by name if section fails
+		// Iterating over Spec.Programs map might be safer
+		for _, p := range coll.Programs {
+			prog = p
+			break // Just take the first one for now?
+			// A more robust implementation would match by name/section explicitly.
+		}
+	}
+
+	if prog == nil {
+		coll.Close()
+		return nil, &LoadError{Program: spec.Name, Err: fmt.Errorf("program not found in collection")}
+	}
+
+	kp, err := link.Kprobe(spec.AttachTo, prog, nil)
+	if err != nil {
+		coll.Close()
+		return nil, &LoadError{Program: spec.Name, Err: fmt.Errorf("attach kprobe %s: %w", spec.AttachTo, err)}
+	}
+
+	if l.verbose {
+		log.Printf("[ebpf] loaded %s (kprobe: %s)", spec.Name, spec.AttachTo)
+	}
+
+	return &LoadedProgram{
+		Spec:       spec,
+		Collection: coll,
+		Link:       kp,
+	}, nil
 }
 
-// NativePrograms returns the list of BPF programs that will be embedded.
+// NativePrograms defines the known programs.
 var NativePrograms = []ProgramSpec{
-	{
-		Name:       "biolatency",
-		Category:   "disk",
-		ObjectFile: "internal/ebpf/bpf/biolatency.o",
-		MapNames:   []string{"hist"},
-	},
-	{
-		Name:       "runqlat",
-		Category:   "cpu",
-		ObjectFile: "internal/ebpf/bpf/runqlat.o",
-		MapNames:   []string{"hist"},
-	},
-	{
-		Name:       "tcpconnect",
-		Category:   "network",
-		ObjectFile: "internal/ebpf/bpf/tcpconnect.o",
-		MapNames:   []string{"events"},
-	},
 	{
 		Name:       "tcpretrans",
 		Category:   "network",
 		ObjectFile: "internal/ebpf/bpf/tcpretrans.o",
 		MapNames:   []string{"events"},
+		AttachTo:   "tcp_retransmit_skb",
+		Section:    "tcp_retransmit_skb", // Usually function name for kprobes in libbpf
 	},
-	{
-		Name:       "offcputime",
-		Category:   "stacktrace",
-		ObjectFile: "internal/ebpf/bpf/offcputime.o",
-		MapNames:   []string{"stacks", "info"},
-	},
-}
-
-// FallbackDecision determines whether to use Tier 3 or fall back to Tier 2.
-type FallbackDecision struct {
-	UseTier3 bool
-	Reason   string
-}
-
-// DecideTier checks native eBPF availability and decides which tier to use.
-func DecideTier(tool string, loader *Loader) FallbackDecision {
-	if !loader.CanLoad() {
-		return FallbackDecision{
-			UseTier3: false,
-			Reason:   fmt.Sprintf("BTF unavailable for native %s, falling back to BCC", tool),
-		}
-	}
-
-	// Check if we have a native program for this tool
-	for _, prog := range NativePrograms {
-		if prog.Name == tool {
-			return FallbackDecision{
-				UseTier3: true,
-				Reason:   fmt.Sprintf("native eBPF available for %s", tool),
-			}
-		}
-	}
-
-	return FallbackDecision{
-		UseTier3: false,
-		Reason:   fmt.Sprintf("no native eBPF program for %s, using BCC", tool),
-	}
 }

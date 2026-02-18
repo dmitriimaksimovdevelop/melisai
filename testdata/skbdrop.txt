@@ -1,0 +1,10 @@
+TIME     PID    COMM             IP SADDR:SPORT         DADDR:DPORT         STATE
+08:00:01 0      swapper/0         4 10.0.0.100:443      10.0.0.5:54321      ESTABLISHED
+        kfree_skb+0x1
+        tcp_v4_rcv+0x8a
+        ip_local_deliver_finish+0x6b
+        ip_local_deliver+0x5f
+08:00:02 1234   nginx              4 10.0.0.5:80         10.0.0.200:12345    SYN_RECV
+        kfree_skb+0x1
+        tcp_v4_do_rcv+0x12a
+        tcp_v4_rcv+0x8a

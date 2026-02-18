@@ -1,0 +1,4 @@
+COMM             PID     TID     MNT_NS      CALL
+systemd          1       1       4026531840  mount("proc", "/proc", "proc", MS_NOSUID|MS_NODEV|MS_NOEXEC, "") = 0
+dockerd          1234    1234    4026531840  mount("overlay", "/var/lib/docker/overlay2/abc123/merged", "overlay", 0, "lowerdir=...") = 0
+mount            5678    5678    4026531840  mount("/dev/sdb1", "/mnt/data", "ext4", 0, "") = 0

@@ -1,0 +1,7 @@
+TIME      PID    COMM                  LATms HOST
+14:02:16  3956   curl                   2.00 www.example.com
+14:02:16  3956   curl                   0.05 www.example.com
+14:02:18  3978   wget                  35.20 api.service.local
+14:02:19  3990   python3                1.50 db.internal
+14:02:20  4001   node                   0.80 redis.cluster
+14:02:21  4012   java                 150.30 slow-dns.external

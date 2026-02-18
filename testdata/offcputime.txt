@@ -1,0 +1,4 @@
+    postgres;schedule;schedule_timeout;io_schedule;blk_mq_get_tag 50000
+    nginx;schedule;ep_poll;do_epoll_wait;__x64_sys_epoll_wait 120000
+    java;schedule;futex_wait;do_futex;__x64_sys_futex 80000
+    postgres;schedule;rwsem_down_read_slowpath;ext4_file_read_iter 35000

@@ -112,7 +112,7 @@ BCC (BPF Compiler Collection) tools trace kernel functions in real-time:
 - `tcpconnlat` — TCP connection establishment time
 - `profile` — CPU flame graph via stack sampling
 
-**Requires root** and the `bcc-tools` package. These tools give you latency distributions (histograms) that procfs cannot provide.
+**Activation**: Use `--profile standard` (some tools) or `--profile deep` (all tools). **Requires root** and the `bcc-tools` package.
 
 ### Tier 3 — Native eBPF (Root + Kernel ≥ 5.8)
 
@@ -121,7 +121,7 @@ Using cilium/ebpf Go library to load BPF programs directly — no Python, no ext
 - BTF (BPF Type Format) for CO-RE (Compile Once, Run Everywhere)
 - Direct kernel tracing with zero external dependencies
 
-**Requires root** and a modern kernel (≥ 5.8 with BTF support). This is the future of Linux observability.
+**Activation**: Used automatically over BCC when available in `standard`/`deep` profiles. **Requires root** and a modern kernel (≥ 5.8).
 
 ### Automatic Fallback
 
@@ -139,11 +139,11 @@ Always: Use Tier 1 procfs collectors
 
 sysdiag supports three profiles that control how long collection runs and which tools are used:
 
-| Profile | Duration | When to Use |
+| Profile | Duration | Capabilities |
 |---------|----------|-------------|
-| `quick` | 10 seconds | Fast health check, CI/CD pipeline |
-| `standard` | 30 seconds | Regular diagnostics, daily checks |
-| `deep` | 60 seconds | Root cause analysis, includes stack traces |
+| `quick` | 10 seconds | Tier 1 only (procfs). Non-root friendly. |
+| `standard` | 30 seconds | **Enables Tier 2/3** (latency histograms). Requires root. |
+| `deep` | 60 seconds | **Enables All Tools** (stack traces, slow FS). Requires root. |
 
 ## Report Structure
 

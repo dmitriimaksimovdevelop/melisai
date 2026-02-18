@@ -131,13 +131,13 @@ func DefaultThresholds() []Threshold {
 		// Network
 		{
 			Metric: "tcp_retransmits", Category: "network",
-			Warning: 50, Critical: 200,
+			Warning: 10, Critical: 50, // rate per second
 			Evaluator: func(r *Report) (float64, bool) {
 				if results, ok := r.Categories["network"]; ok {
 					for _, res := range results {
 						if net, ok := res.Data.(*NetworkData); ok {
 							if net.TCP != nil {
-								return float64(net.TCP.RetransSegs), true
+								return net.TCP.RetransRate, true
 							}
 						}
 					}
@@ -145,7 +145,7 @@ func DefaultThresholds() []Threshold {
 				return 0, false
 			},
 			Message: func(v float64) string {
-				return fmt.Sprintf("TCP retransmits: %.0f segments", v)
+				return fmt.Sprintf("TCP retransmit rate: %.1f/sec", v)
 			},
 		},
 		{
@@ -187,10 +187,10 @@ func DefaultThresholds() []Threshold {
 		},
 		// Container-specific
 		{
-			Metric: "cpu_throttling", Category: "system",
+			Metric: "cpu_throttling", Category: "container",
 			Warning: 100, Critical: 1000,
 			Evaluator: func(r *Report) (float64, bool) {
-				for _, results := range r.Categories {
+				if results, ok := r.Categories["container"]; ok {
 					for _, res := range results {
 						if c, ok := res.Data.(*ContainerData); ok {
 							return float64(c.CPUThrottledPeriods), true
@@ -204,10 +204,10 @@ func DefaultThresholds() []Threshold {
 			},
 		},
 		{
-			Metric: "container_memory_usage", Category: "system",
+			Metric: "container_memory_usage", Category: "container",
 			Warning: 80, Critical: 95,
 			Evaluator: func(r *Report) (float64, bool) {
-				for _, results := range r.Categories {
+				if results, ok := r.Categories["container"]; ok {
 					for _, res := range results {
 						if c, ok := res.Data.(*ContainerData); ok {
 							if c.MemoryLimit > 0 {
@@ -222,6 +222,181 @@ func DefaultThresholds() []Threshold {
 				return fmt.Sprintf("Container memory: %.1f%% of limit (OOM risk)", v)
 			},
 		},
+		// Tier 2 histogram-based thresholds (biolatency, runqlat, gethostlatency, cachestat)
+		{
+			Metric: "biolatency_p99_ssd", Category: "disk",
+			Warning: 5, Critical: 25, // milliseconds
+			Evaluator: histogramP99Evaluator("biolatency", false),
+			Message: func(v float64) string {
+				return fmt.Sprintf("Block I/O p99 latency (SSD): %.1fms", v)
+			},
+		},
+		{
+			Metric: "biolatency_p99_hdd", Category: "disk",
+			Warning: 50, Critical: 200, // milliseconds
+			Evaluator: histogramP99Evaluator("biolatency", true),
+			Message: func(v float64) string {
+				return fmt.Sprintf("Block I/O p99 latency (HDD): %.1fms", v)
+			},
+		},
+		{
+			Metric: "runqlat_p99", Category: "cpu",
+			Warning: 10, Critical: 50, // milliseconds
+			Evaluator: histogramP99Evaluator("runqlat", false),
+			Message: func(v float64) string {
+				return fmt.Sprintf("Run queue latency p99: %.1fms (scheduler delay)", v)
+			},
+		},
+		{
+			Metric: "dns_latency_p99", Category: "network",
+			Warning: 50, Critical: 200, // milliseconds
+			Evaluator: histogramP99Evaluator("gethostlatency", false),
+			Message: func(v float64) string {
+				return fmt.Sprintf("DNS lookup latency p99: %.1fms", v)
+			},
+		},
+		{
+			Metric: "cache_miss_ratio", Category: "memory",
+			Warning: 5, Critical: 15, // percentage
+			Evaluator: func(r *Report) (float64, bool) {
+				for _, results := range r.Categories {
+					for _, res := range results {
+						if res.Collector == "cachestat" {
+							for _, h := range res.Histograms {
+								if h.Name == "cache_miss_ratio" {
+									return h.Mean, true
+								}
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("Page cache miss ratio: %.1f%%", v)
+			},
+		},
+		// PSI thresholds (CPU and I/O)
+		{
+			Metric: "cpu_psi_pressure", Category: "cpu",
+			Warning: 5.0, Critical: 25.0,
+			Evaluator: func(r *Report) (float64, bool) {
+				// CPU PSI is read from /proc/pressure/cpu
+				if results, ok := r.Categories["cpu"]; ok {
+					for _, res := range results {
+						if cpu, ok := res.Data.(*CPUData); ok {
+							if cpu.PSISome10 > 0 {
+								return cpu.PSISome10, true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("CPU PSI pressure: %.1f%% (some tasks stalling on CPU)", v)
+			},
+		},
+		{
+			Metric: "io_psi_pressure", Category: "disk",
+			Warning: 10.0, Critical: 50.0,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["disk"]; ok {
+					for _, res := range results {
+						if disk, ok := res.Data.(*DiskData); ok {
+							if disk.PSISome10 > 0 {
+								return disk.PSISome10, true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("I/O PSI pressure: %.1f%% (tasks stalling on I/O)", v)
+			},
+		},
+		// Disk average latency
+		{
+			Metric: "disk_avg_latency", Category: "disk",
+			Warning: 5, Critical: 50, // ms; conservative for mixed SSD/HDD
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["disk"]; ok {
+					for _, res := range results {
+						if disk, ok := res.Data.(*DiskData); ok {
+							var maxLat float64
+							for _, dev := range disk.Devices {
+								if dev.AvgLatencyMs > maxLat {
+									maxLat = dev.AvgLatencyMs
+								}
+							}
+							if maxLat > 0 {
+								return maxLat, true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("Disk average I/O latency: %.1fms", v)
+			},
+		},
+		// Network errors per second
+		{
+			Metric: "network_errors_per_sec", Category: "network",
+			Warning: 10, Critical: 100,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["network"]; ok {
+					for _, res := range results {
+						if net, ok := res.Data.(*NetworkData); ok {
+							var maxRate float64
+							for _, iface := range net.Interfaces {
+								if iface.ErrorsPerSec > maxRate {
+									maxRate = iface.ErrorsPerSec
+								}
+							}
+							if maxRate > 0 {
+								return maxRate, true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("Network errors: %.1f/sec", v)
+			},
+		},
+	}
+}
+
+// histogramP99Evaluator returns an evaluator that searches all results for a
+// histogram with the given name and returns its P99 value. If rotational is
+// true, only matches devices flagged as rotational (HDD).
+func histogramP99Evaluator(histName string, rotational bool) func(*Report) (float64, bool) {
+	return func(r *Report) (float64, bool) {
+		for _, results := range r.Categories {
+			for _, res := range results {
+				for _, h := range res.Histograms {
+					if h.Name == histName || (rotational && h.Name == histName+"_hdd") ||
+						(!rotational && h.Name == histName+"_ssd") {
+						if h.P99 > 0 {
+							return h.P99, true
+						}
+					}
+				}
+				// Also check by collector name with generic histogram
+				if res.Collector == histName {
+					for _, h := range res.Histograms {
+						if h.P99 > 0 {
+							return h.P99, true
+						}
+					}
+				}
+			}
+		}
+		return 0, false
 	}
 }
 

@@ -1,0 +1,5 @@
+ADDR             SIZE  COMM             PID    ALLOCS  STACK
+ffff888012340000 4096  java             12345  1500    __alloc_pages_nodemask;alloc_pages_vma;handle_mm_fault
+ffff888023450000 8192  postgres         23456  850     kmalloc;__kmalloc;security_inode_alloc
+ffff888034560000 2048  python3          34567  420     __alloc_pages_nodemask;alloc_pages_vma;do_anonymous_page
+ffff888045670000 512   nginx            45678  280     kmem_cache_alloc;sock_alloc_inode

@@ -59,6 +59,7 @@ func (c *ProcessCollector) Collect(ctx context.Context, cfg CollectConfig) (*mod
 	// Calculate CPU deltas
 	var processes []model.ProcessInfo
 	var totalProcs, running, sleeping, zombie int
+	var excludedPIDs []int
 
 	for pid, p2 := range pids2 {
 		totalProcs++
@@ -83,7 +84,7 @@ func (c *ProcessCollector) Collect(ctx context.Context, cfg CollectConfig) (*mod
 			memPct = float64(p2.rss*4096) / float64(totalMem) * 100
 		}
 
-		processes = append(processes, model.ProcessInfo{
+		pi := model.ProcessInfo{
 			PID:     pid,
 			Comm:    p2.comm,
 			CPUPct:  cpuPct,
@@ -92,34 +93,41 @@ func (c *ProcessCollector) Collect(ctx context.Context, cfg CollectConfig) (*mod
 			Threads: p2.threads,
 			FDs:     p2.fds,
 			State:   p2.state,
-		})
+		}
+
+		// Exclude sysdiag's own processes from top lists (but keep in totals)
+		if cfg.PIDTracker != nil && cfg.PIDTracker.IsOwnPID(pid) {
+			excludedPIDs = append(excludedPIDs, pid)
+			continue
+		}
+
+		processes = append(processes, pi)
 	}
 
 	// Top 20 by CPU
 	sort.Slice(processes, func(i, j int) bool {
 		return processes[i].CPUPct > processes[j].CPUPct
 	})
-	topCPU := processes
-	if len(topCPU) > 20 {
-		topCPU = topCPU[:20]
-	}
+	n := min(20, len(processes))
+	topCPU := make([]model.ProcessInfo, n)
+	copy(topCPU, processes[:n])
 
 	// Top 20 by memory
 	sort.Slice(processes, func(i, j int) bool {
 		return processes[i].MemRSS > processes[j].MemRSS
 	})
-	topMem := processes
-	if len(topMem) > 20 {
-		topMem = topMem[:20]
-	}
+	n = min(20, len(processes))
+	topMem := make([]model.ProcessInfo, n)
+	copy(topMem, processes[:n])
 
 	data := &model.ProcessData{
-		TopByCPU: topCPU,
-		TopByMem: topMem,
-		Total:    totalProcs,
-		Running:  running,
-		Sleeping: sleeping,
-		Zombie:   zombie,
+		TopByCPU:     topCPU,
+		TopByMem:     topMem,
+		Total:        totalProcs,
+		Running:      running,
+		Sleeping:     sleeping,
+		Zombie:       zombie,
+		ExcludedPIDs: excludedPIDs,
 	}
 
 	return &model.Result{

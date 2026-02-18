@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -18,10 +17,16 @@ import (
 // NetworkCollector gathers network metrics from procfs (Tier 1).
 type NetworkCollector struct {
 	procRoot string
+	cmdRun   CommandRunner
 }
 
 func NewNetworkCollector(procRoot string) *NetworkCollector {
-	return &NetworkCollector{procRoot: procRoot}
+	return &NetworkCollector{procRoot: procRoot, cmdRun: &ExecCommandRunner{}}
+}
+
+// NewNetworkCollectorWithRunner creates a NetworkCollector with a custom CommandRunner for testing.
+func NewNetworkCollectorWithRunner(procRoot string, runner CommandRunner) *NetworkCollector {
+	return &NetworkCollector{procRoot: procRoot, cmdRun: runner}
 }
 
 func (c *NetworkCollector) Name() string     { return "network_stats" }
@@ -34,11 +39,49 @@ func (c *NetworkCollector) Collect(ctx context.Context, cfg CollectConfig) (*mod
 	start := time.Now()
 	data := &model.NetworkData{}
 
-	// /proc/net/dev — interface statistics
+	// Two-point sampling for /proc/net/dev and /proc/net/snmp to get rates
+	ifaces1 := c.parseNetDev()
+	snmp1 := c.parseSNMP()
+
+	interval := cfg.SampleInterval
+	if interval == 0 {
+		interval = 1 * time.Second
+	}
+	select {
+	case <-time.After(interval):
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
+	// /proc/net/dev — interface statistics (second sample)
 	data.Interfaces = c.parseNetDev()
 
-	// /proc/net/snmp — TCP protocol stats
+	// /proc/net/snmp — TCP protocol stats (second sample for rate)
 	data.TCP = c.parseSNMP()
+
+	// Compute retransmit rate from delta
+	if snmp1 != nil && data.TCP != nil {
+		retransDelta := data.TCP.RetransSegs - snmp1.RetransSegs
+		if retransDelta < 0 {
+			retransDelta = 0 // counter wrapped
+		}
+		data.TCP.RetransRate = float64(retransDelta) / interval.Seconds()
+	}
+
+	// Compute per-interface error rates from delta
+	if ifaces1 != nil {
+		ifaceMap := make(map[string]model.NetworkInterface, len(ifaces1))
+		for _, iface := range ifaces1 {
+			ifaceMap[iface.Name] = iface
+		}
+		for i, iface := range data.Interfaces {
+			if prev, ok := ifaceMap[iface.Name]; ok {
+				errDelta := (iface.RxErrors - prev.RxErrors) + (iface.TxErrors - prev.TxErrors) +
+					(iface.RxDropped - prev.RxDropped) + (iface.TxDropped - prev.TxDropped)
+				data.Interfaces[i].ErrorsPerSec = float64(errDelta) / interval.Seconds()
+			}
+		}
+	}
 
 	// ss — connection state summary
 	c.parseSSConnections(ctx, data)
@@ -48,6 +91,8 @@ func (c *NetworkCollector) Collect(ctx context.Context, cfg CollectConfig) (*mod
 	data.TCPRmem = readSysctlString(c.procRoot, "sys/net/ipv4/tcp_rmem")
 	data.TCPWmem = readSysctlString(c.procRoot, "sys/net/ipv4/tcp_wmem")
 	data.SomaxConn = readSysctlInt(c.procRoot, "sys/net/core/somaxconn")
+	data.TCPMaxSynBacklog = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_max_syn_backlog")
+	data.TCPTWReuse = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_tw_reuse")
 
 	return &model.Result{
 		Collector: c.Name(),
@@ -163,7 +208,7 @@ func (c *NetworkCollector) parseSNMP() *model.TCPStats {
 
 func (c *NetworkCollector) parseSSConnections(ctx context.Context, data *model.NetworkData) {
 	// `ss -s` for summary
-	out, err := exec.CommandContext(ctx, "ss", "-s").Output()
+	out, err := c.cmdRun.Run(ctx, "ss", "-s")
 	if err != nil {
 		return
 	}
@@ -184,7 +229,7 @@ func (c *NetworkCollector) parseSSConnections(ctx context.Context, data *model.N
 	}
 
 	// `ss -tn state close-wait` for close-wait count
-	out2, err := exec.CommandContext(ctx, "ss", "-tn", "state", "close-wait").Output()
+	out2, err := c.cmdRun.Run(ctx, "ss", "-tn", "state", "close-wait")
 	if err == nil {
 		lines := strings.Split(strings.TrimSpace(string(out2)), "\n")
 		if len(lines) > 1 {

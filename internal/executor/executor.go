@@ -17,6 +17,7 @@ type RawOutput struct {
 	ExitCode  int
 	Duration  time.Duration
 	Truncated bool // true if output was capped
+	PID       int  // OS process ID of the spawned tool
 }
 
 // Executor runs external tools and captures their output.
@@ -69,13 +70,21 @@ func (e *BCCExecutor) Run(ctx context.Context, tool string, args []string, durat
 		fmt.Fprintf(&stderr, "[AUDIT] exec: %s %s\n", binPath, strings.Join(args, " "))
 	}
 
-	err = cmd.Run()
+	// Use Start+Wait instead of Run to capture the child PID
+	err = cmd.Start()
+	if err != nil {
+		return nil, fmt.Errorf("start %s: %w", tool, err)
+	}
 
 	raw := &RawOutput{
-		Stdout:   stdout.String(),
-		Stderr:   stderr.String(),
-		Duration: time.Since(start),
+		PID: cmd.Process.Pid,
 	}
+
+	err = cmd.Wait()
+
+	raw.Stdout = stdout.String()
+	raw.Stderr = stderr.String()
+	raw.Duration = time.Since(start)
 
 	if cmd.ProcessState != nil {
 		raw.ExitCode = cmd.ProcessState.ExitCode()

@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"regexp"
@@ -39,7 +40,7 @@ func ParseHistogram(raw string, name, unit string) (*model.Histogram, error) {
 	}
 
 	if len(buckets) == 0 {
-		return nil, fmt.Errorf("no histogram buckets found")
+		return nil, ErrNoHistogramData
 	}
 
 	// Compute statistics
@@ -50,6 +51,23 @@ func ParseHistogram(raw string, name, unit string) (*model.Histogram, error) {
 	}
 	computeHistStats(hist)
 	return hist, nil
+}
+
+// ErrNoHistogramData is returned when no histogram buckets are found in output.
+// This is normal for tools that had no events during the collection period.
+var ErrNoHistogramData = fmt.Errorf("no histogram buckets found")
+
+// ParseHistogramResult wraps ParseHistogram and returns an empty Result
+// instead of an error when no histogram data is found.
+func ParseHistogramResult(raw, collector, category, histName, unit string) (*model.Result, error) {
+	hist, err := ParseHistogram(raw, histName, unit)
+	if err != nil {
+		if errors.Is(err, ErrNoHistogramData) {
+			return &model.Result{Collector: collector, Category: category, Tier: 2}, nil
+		}
+		return nil, err
+	}
+	return &model.Result{Collector: collector, Category: category, Tier: 2, Histograms: []model.Histogram{*hist}}, nil
 }
 
 // ParsePerDiskHistogram parses biolatency -D style output with per-disk sections.
@@ -256,23 +274,19 @@ func ParseFoldedStacks(raw string, stackType string) ([]model.StackTrace, error)
 
 // ParseRunqlat parses runqlat histogram output.
 func ParseRunqlat(raw string) (*model.Result, error) {
-	hist, err := ParseHistogram(raw, "run_queue_latency", "us")
-	if err != nil {
-		return nil, err
-	}
-	return &model.Result{
-		Collector:  "runqlat",
-		Category:   "cpu",
-		Tier:       2,
-		Histograms: []model.Histogram{*hist},
-	}, nil
+	return ParseHistogramResult(raw, "runqlat", "cpu", "run_queue_latency", "us")
 }
 
 // ParseBiolatency parses biolatency output (possibly per-disk with -D flag).
 func ParseBiolatency(raw string) (*model.Result, error) {
 	hists, err := ParsePerDiskHistogram(raw, "us")
 	if err != nil {
-		return nil, err
+		// No histogram data (e.g. no disk I/O during collection) — return empty result
+		return &model.Result{
+			Collector: "biolatency",
+			Category:  "disk",
+			Tier:      2,
+		}, nil
 	}
 	return &model.Result{
 		Collector:  "biolatency",
@@ -308,16 +322,7 @@ func ParseTcpretrans(raw string, maxEvents int) (*model.Result, error) {
 
 // ParseTcprtt parses tcprtt histogram output.
 func ParseTcprtt(raw string) (*model.Result, error) {
-	hist, err := ParseHistogram(raw, "tcp_rtt", "us")
-	if err != nil {
-		return nil, err
-	}
-	return &model.Result{
-		Collector:  "tcprtt",
-		Category:   "network",
-		Tier:       2,
-		Histograms: []model.Histogram{*hist},
-	}, nil
+	return ParseHistogramResult(raw, "tcprtt", "network", "tcp_rtt", "us")
 }
 
 // ParseGethostlatency parses gethostlatency tabular output.

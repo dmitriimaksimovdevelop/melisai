@@ -1,0 +1,5 @@
+COMM             PID    LAT(ms) PAGES
+java             12345  25.31   128
+kswapd0          45     12.50    64
+postgres         23456  18.75    32
+chrome           34567  45.20   256

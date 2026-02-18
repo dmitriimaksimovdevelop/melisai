@@ -1,0 +1,4 @@
+TIME     PID    IP SADDR:SPORT          > DADDR:DPORT          STATE (FLAGS)
+10:30:01 0      4  10.0.0.1:80          > 10.0.0.2:54321       ESTABLISHED (ACK)
+10:30:05 0      4  10.0.0.1:443         > 10.0.0.3:12345       SYN_RECV (SYN|ACK)
+10:30:10 0      4  10.0.0.1:80          > 10.0.0.4:33333       ESTABLISHED (ACK|PSH)

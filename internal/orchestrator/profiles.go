@@ -23,6 +23,8 @@ var profiles = map[string]ProfileConfig{
 			"process_info",
 			"biolatency", // Tier 2 if available
 			"tcpretrans", // Tier 2 if available
+			"opensnoop",  // high signal process tracing
+			"oomkill",    // OOM kill events
 		},
 	},
 	"standard": {
@@ -45,8 +47,11 @@ var profiles = map[string]ProfileConfig{
 		Extra: []string{
 			"memleak",
 			"offwaketime",
+			"biostacks",
+			"wakeuptime",
+			"biotop",
 			"tcpstates",
-			"netqtop",
+			"tcplife",
 		},
 	},
 }

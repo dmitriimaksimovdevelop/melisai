@@ -1,0 +1,5 @@
+TIME     UID    PID    COMM             CAP    NAME             AUDIT
+08:00:01 0      1234   dockerd          12     CAP_NET_ADMIN    1
+08:00:02 0      5678   nginx            10     CAP_NET_BIND_SERVICE 1
+08:00:03 1000   9012   ping              13    CAP_NET_RAW      1
+08:00:04 0      3456   tcpdump          13     CAP_NET_RAW      1

@@ -1,0 +1,5 @@
+TIME     PID    COMM             AGE(s)  FILE
+08:00:01 1234   gcc              0.25    ccXa4bK2.s
+08:00:02 5678   python3          1.50    tmpfile_abc.py
+08:00:03 9012   vim              120.00  .file.swp
+08:00:04 3456   make             0.10    main.o

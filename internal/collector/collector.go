@@ -4,10 +4,25 @@ package collector
 
 import (
 	"context"
+	"os/exec"
 	"time"
 
 	"github.com/baikal/sysdiag/internal/model"
+	"github.com/baikal/sysdiag/internal/observer"
 )
+
+// CommandRunner abstracts external command execution for testability.
+type CommandRunner interface {
+	// Run executes a command and returns its combined output.
+	Run(ctx context.Context, name string, args ...string) ([]byte, error)
+}
+
+// ExecCommandRunner is the default CommandRunner using os/exec.
+type ExecCommandRunner struct{}
+
+func (r *ExecCommandRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
+	return exec.CommandContext(ctx, name, args...).Output()
+}
 
 // Collector gathers metrics from a specific source.
 // Each collector is responsible for a single metric domain.
@@ -67,6 +82,10 @@ type CollectConfig struct {
 
 	// SysRoot is the path to sysfs mount (default "/sys").
 	SysRoot string
+
+	// PIDTracker tracks sysdiag's own PID and child BCC tool PIDs
+	// for observer-effect mitigation. May be nil if not configured.
+	PIDTracker *observer.PIDTracker
 }
 
 // DefaultConfig returns a CollectConfig with sensible defaults.

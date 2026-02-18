@@ -1,0 +1,2 @@
+TIME         READ/s  WRITE/s  FSYNC/s  OPEN/s CREATE/s
+08:00:01     12450   3420     120      890    45

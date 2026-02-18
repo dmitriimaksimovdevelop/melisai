@@ -1,0 +1,6 @@
+PID    COMM             D MAJ MIN  DISK       I/O  Kbytes  AVGms
+23456  postgres         R 259   0  nvme0n1    452   14464   0.85
+23456  postgres         W 259   0  nvme0n1    128    4096   1.20
+12345  java             R 259   0  nvme0n1    256    8192   0.92
+34567  mysqld           W   8   0  sda        512   16384   5.30
+45678  logrotate        W   8   0  sda         64    2048   3.10

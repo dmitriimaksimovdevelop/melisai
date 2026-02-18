@@ -1,0 +1,9 @@
+PID    COMM               FD ERR PATH
+1234   nginx               6   0 /var/log/nginx/access.log
+1234   nginx               7   0 /var/log/nginx/error.log
+5678   python3             3   0 /etc/resolv.conf
+5678   python3             4   0 /usr/lib/python3/lib-dynload/_ssl.cpython-311-x86_64-linux-gnu.so
+9012   postgres           12   0 /var/lib/postgresql/14/main/base/16384/16385
+3456   java                8   0 /opt/app/config/application.yml
+3456   java               -1   2 /opt/app/config/missing.yml
+7890   dockerd             5   0 /var/run/docker.sock

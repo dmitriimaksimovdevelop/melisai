@@ -65,9 +65,9 @@ func ComputeUSEMetrics(report *Report) map[string]USEMetric {
 		}
 	}
 
-	// Software resources
-	if sysResults, ok := report.Categories["system"]; ok {
-		for _, r := range sysResults {
+	// Software resources (container)
+	if containerResults, ok := report.Categories["container"]; ok {
+		for _, r := range containerResults {
 			if container, ok := r.Data.(*ContainerData); ok && container.Runtime != "none" {
 				if container.CPUQuota > 0 && container.CPUPeriod > 0 {
 					// Cgroup CPU utilization: throttled time as % of total allowed CPU time.

@@ -7,13 +7,40 @@ Tier 3 — будущее наблюдаемости Linux: загрузка eBP
 - **BTF** (BPF Type Format) — метаданные о структурах ядра
 - **CO-RE** (Compile Once, Run Everywhere) — единожды скомпилированная программа работает на разных ядрах
 
-## Определение возможностей
+## Загрузчик (Реализация)
 
+Файл `loader.go` использует библиотеку `cilium/ebpf` для загрузки и подключения программ:
+
+```go
+type Loader struct {
+    btfInfo *BTFInfo
+    verbose bool
+}
+
+func (l *Loader) TryLoad(ctx context.Context, spec *ProgramSpec) (*LoadedProgram, error) {
+    // 1. Загрузка скомпилированного BPF-объекта (.o файл)
+    collSpec, err := ebpf.LoadCollectionSpec(spec.ObjectFile)
+
+    // 2. Загрузка в ядро (верификация и JIT)
+    // На этом этапе автоматически выполняются CO-RE перемещения
+    coll, err := ebpf.NewCollection(collSpec)
+
+    // 3. Подключение kprobe
+    kp, err := link.Kprobe(spec.AttachTo, prog, nil)
+
+    return &LoadedProgram{Collection: coll, Link: kp}, nil
+}
 ```
-Tier 3 доступен? → Ядро ≥ 5.8, BTF (/sys/kernel/btf/vmlinux), root
-Tier 2 доступен? → bcc-tools установлены, root
-Всегда: Tier 1  → procfs/sysfs
-```
+
+Система требует наличия `.o` файлов (скомпилированный байт-код eBPF). В будущем они могут быть встроены в бинарник с помощью директивы `//go:embed`.
+
+### Нативные коллекторы
+
+`NativeTcpretransCollector` (`internal/collector/ebpf_tcpretrans.go`) демонстрирует использование:
+
+1.  **Чтение Perf Buffer**: Использует `perf.NewReader` для чтения событий из BPF-карты.
+2.  **Парсинг бинарных данных**: Использует `binary.Read` для конвертации байтов в Go-структуры.
+3.  **Без оверхеда на переключение контекста**: В отличие от BCC (Python -> C -> Go), здесь чистый путь Go -> Kernel.
 
 | Свойство | Tier 2 (BCC) | Tier 3 (Native) |
 |---------|-------------|-----------------|

@@ -95,6 +95,22 @@ func GenerateAIPrompt(report *model.Report) *model.AIContext {
 		sb.WriteString("tail latency issues and multimodal distributions.\n")
 	}
 
+	// Observer effect note
+	if report.Metadata.ObserverOverhead != nil {
+		oh := report.Metadata.ObserverOverhead
+		sb.WriteString(fmt.Sprintf(
+			"\nOBSERVER EFFECT NOTE: sysdiag's own overhead during collection: "+
+				"CPU=%dms user + %dms system, Memory=%dMB RSS, "+
+				"Disk I/O=%dKB read + %dKB write, Context switches=%d. "+
+				"%d BCC tool processes excluded from TopByCPU/TopByMem. "+
+				"Compensated CPU estimates provided in estimated_*_pct fields.\n",
+			oh.CPUUserMs, oh.CPUSystemMs,
+			oh.MemoryRSSBytes/(1024*1024),
+			oh.DiskReadBytes/1024, oh.DiskWriteBytes/1024,
+			oh.ContextSwitches,
+			len(oh.ChildPIDs)))
+	}
+
 	sb.WriteString("\nProvide actionable, specific commands. ")
 	sb.WriteString("Cite relevant kernel documentation or performance references.\n")
 

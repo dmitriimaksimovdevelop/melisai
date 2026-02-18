@@ -47,6 +47,12 @@ func (c *MemoryCollector) Collect(ctx context.Context, cfg CollectConfig) (*mode
 	data.DirtyRatio = readSysctlInt(c.procRoot, "sys/vm/dirty_ratio")
 	data.DirtyBackgroundRatio = readSysctlInt(c.procRoot, "sys/vm/dirty_background_ratio")
 
+	// min_free_kbytes
+	data.MinFreeKbytes = readSysctlInt(c.procRoot, "sys/vm/min_free_kbytes")
+
+	// Transparent Huge Pages
+	data.THPEnabled = c.readTHPEnabled()
+
 	// PSI memory pressure
 	c.parsePSI(data)
 
@@ -169,6 +175,22 @@ func (c *MemoryCollector) parsePSI(data *model.MemoryData) {
 			}
 		}
 	}
+}
+
+func (c *MemoryCollector) readTHPEnabled() string {
+	data, err := os.ReadFile(filepath.Join(c.sysRoot, "kernel", "mm", "transparent_hugepage", "enabled"))
+	if err != nil {
+		return ""
+	}
+	// Format: "always [madvise] never" — active in brackets
+	content := string(data)
+	if idx := strings.Index(content, "["); idx >= 0 {
+		end := strings.Index(content[idx:], "]")
+		if end > 0 {
+			return content[idx+1 : idx+end]
+		}
+	}
+	return strings.TrimSpace(content)
 }
 
 func (c *MemoryCollector) parseBuddyinfo() map[string][]int {

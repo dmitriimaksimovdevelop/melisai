@@ -53,6 +53,14 @@ func (inst *Installer) Run() error {
 		fmt.Printf("Kernel: %s\n", kernel)
 	}
 
+	// Update package index first
+	if !inst.DryRun {
+		fmt.Println("\nUpdating package index...")
+		if err := updatePackageIndex(distro.PkgManager); err != nil {
+			fmt.Printf("  WARNING: %v\n", err)
+		}
+	}
+
 	// Install packages in order
 	steps := BuildPackageSteps(distro)
 	for _, step := range steps {
@@ -68,9 +76,13 @@ func (inst *Installer) Run() error {
 			continue
 		}
 
-		if err := installPackages(distro.PkgManager, pkgs); err != nil {
-			fmt.Printf("  WARNING: %v\n", err)
-			// Continue installing other packages
+		// Install packages individually so one failure doesn't block others
+		for _, pkg := range pkgs {
+			if err := installPackages(distro.PkgManager, []string{pkg}); err != nil {
+				fmt.Printf("  WARNING: failed to install %s: %v\n", pkg, err)
+			} else {
+				fmt.Printf("  OK: %s\n", pkg)
+			}
 		}
 	}
 
@@ -143,12 +155,21 @@ func KernelVersion() (string, error) {
 func BuildPackageSteps(distro *DistroInfo) []PackageSet {
 	kernelVer, _ := KernelVersion()
 
+	// For kernel headers on apt, try version-specific first, then generic
+	aptHeaders := []string{"linux-headers-" + kernelVer}
+	aptPerfTools := []string{"linux-tools-" + kernelVer}
+	// Fallback: generic meta-package if exact version not available
+	if kernelVer != "" {
+		aptHeaders = append(aptHeaders, "linux-headers-generic")
+		aptPerfTools = append(aptPerfTools, "linux-tools-generic")
+	}
+
 	return []PackageSet{
 		{
 			Step: "kernel-headers",
 			Packages: map[string][]string{
-				"apt":    {"linux-headers-" + kernelVer},
-				"yum":    {"kernel-devel-" + kernelVer},
+				"apt":    aptHeaders,
+				"yum":    {"kernel-devel-" + kernelVer, "kernel-devel"},
 				"dnf":    {"kernel-devel"},
 				"pacman": {"linux-headers"},
 			},
@@ -156,8 +177,8 @@ func BuildPackageSteps(distro *DistroInfo) []PackageSet {
 		{
 			Step: "bcc-tools",
 			Packages: map[string][]string{
-				"apt":    {"bpfcc-tools", "python3-bpfcc", "libbpfcc-dev"},
-				"yum":    {"bcc-tools", "python3-bcc", "bcc-devel"},
+				"apt":    {"bpfcc-tools", "python3-bpfcc"},
+				"yum":    {"bcc-tools", "python3-bcc"},
 				"dnf":    {"bcc-tools", "python3-bcc"},
 				"pacman": {"bcc-tools", "python-bcc"},
 			},
@@ -174,7 +195,7 @@ func BuildPackageSteps(distro *DistroInfo) []PackageSet {
 		{
 			Step: "perf",
 			Packages: map[string][]string{
-				"apt":    {"linux-tools-" + kernelVer},
+				"apt":    aptPerfTools,
 				"yum":    {"perf"},
 				"dnf":    {"perf"},
 				"pacman": {"perf"},
@@ -192,12 +213,33 @@ func BuildPackageSteps(distro *DistroInfo) []PackageSet {
 	}
 }
 
+func updatePackageIndex(pkgManager string) error {
+	var cmd *exec.Cmd
+	switch pkgManager {
+	case "apt":
+		cmd = exec.Command("apt-get", "update", "-qq")
+		cmd.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
+	case "yum":
+		cmd = exec.Command("yum", "makecache", "-q")
+	case "dnf":
+		cmd = exec.Command("dnf", "makecache", "-q")
+	case "pacman":
+		cmd = exec.Command("pacman", "-Sy")
+	default:
+		return nil
+	}
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 func installPackages(pkgManager string, packages []string) error {
 	var cmd *exec.Cmd
 	switch pkgManager {
 	case "apt":
-		args := append([]string{"install", "-y"}, packages...)
+		args := append([]string{"install", "-y", "-qq"}, packages...)
 		cmd = exec.Command("apt-get", args...)
+		cmd.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
 	case "yum":
 		args := append([]string{"install", "-y"}, packages...)
 		cmd = exec.Command("yum", args...)

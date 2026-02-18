@@ -12,6 +12,24 @@
 | `parseSNMP()` | `/proc/net/snmp` | CurrEstab, ActiveOpens, RetransSegs, InErrs |
 | `parseSSConnections()` | `ss -s`, `ss -tn state close-wait` | TIME_WAIT и CLOSE_WAIT |
 
+## Глубокий анализ (Tier 2/3)
+
+Счётчики ошибок в `/proc/net/snmp` накапливаются с загрузки. Сложно понять, происходят ли ошибки *сейчас*.
+
+### tcpconnlat (Tier 2)
+Измеряет время установления соединения (Handshake: SYN -> SYN/ACK -> ACK).
+- **Полезно**: Если приложение жалуется на таймауты подключения.
+- **Причина**: Перегрузка сети, медленный DNS, удалённый сервер.
+
+### tcpretrans (Tier 2/3)
+Показывает каждую ретрансмиссию пакета в реальном времени (Source IP, Dest IP, Port).
+- **Нативный eBPF (Tier 3)**: Работает без Python, очень быстро.
+- **Полезно**: Понять, *какое именно* соединение теряет пакеты.
+
+### gethostlatency (Tier 2)
+Задержки DNS-запросов (getaddrinfo/gethostbyname).
+- Часто "тормоза сети" оказываются тормозами DNS.
+
 ## Проблемы TCP состояний
 
 | Состояние | Число | Значение |

@@ -24,7 +24,7 @@ func NewContainerCollector(procRoot, sysRoot string) *ContainerCollector {
 }
 
 func (c *ContainerCollector) Name() string     { return "container_info" }
-func (c *ContainerCollector) Category() string { return "system" }
+func (c *ContainerCollector) Category() string { return "container" }
 func (c *ContainerCollector) Available() Availability {
 	return Availability{Tier: 1}
 }

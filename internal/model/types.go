@@ -18,21 +18,34 @@ type Report struct {
 
 // Metadata identifies the collection run.
 type Metadata struct {
-	Tool          string   `json:"tool"`
-	Version       string   `json:"version"`
-	SchemaVersion string   `json:"schema_version"`
-	Hostname      string   `json:"hostname"`
-	Timestamp     string   `json:"timestamp"`
-	Duration      string   `json:"duration"`
-	Profile       string   `json:"profile"`
-	FocusAreas    []string `json:"focus_areas"`
-	KernelVersion string   `json:"kernel_version"`
-	Arch          string   `json:"arch"`
-	CPUs          int      `json:"cpus"`
-	MemoryGB      int      `json:"memory_gb"`
-	Capabilities  []string `json:"capabilities"`
-	ContainerEnv  string   `json:"container_env"`
-	CgroupVersion int      `json:"cgroup_version"`
+	Tool             string            `json:"tool"`
+	Version          string            `json:"version"`
+	SchemaVersion    string            `json:"schema_version"`
+	Hostname         string            `json:"hostname"`
+	Timestamp        string            `json:"timestamp"`
+	Duration         string            `json:"duration"`
+	Profile          string            `json:"profile"`
+	FocusAreas       []string          `json:"focus_areas"`
+	KernelVersion    string            `json:"kernel_version"`
+	Arch             string            `json:"arch"`
+	CPUs             int               `json:"cpus"`
+	MemoryGB         int               `json:"memory_gb"`
+	Capabilities     []string          `json:"capabilities"`
+	ContainerEnv     string            `json:"container_env"`
+	CgroupVersion    int               `json:"cgroup_version"`
+	ObserverOverhead *ObserverOverhead `json:"observer_overhead,omitempty"`
+}
+
+// ObserverOverhead records sysdiag's own resource consumption during collection.
+type ObserverOverhead struct {
+	SelfPID         int    `json:"self_pid"`
+	ChildPIDs       []int  `json:"child_pids"`
+	CPUUserMs       int64  `json:"cpu_user_ms"`
+	CPUSystemMs     int64  `json:"cpu_system_ms"`
+	MemoryRSSBytes  int64  `json:"memory_rss_bytes"`
+	DiskReadBytes   int64  `json:"disk_read_bytes"`
+	DiskWriteBytes  int64  `json:"disk_write_bytes"`
+	ContextSwitches int64  `json:"context_switches"`
 }
 
 // SystemInfo describes the host OS, filesystems, and recent errors.
@@ -134,6 +147,8 @@ type CPUData struct {
 	StealPct              float64  `json:"steal_pct"`
 	IRQPct                float64  `json:"irq_pct"`
 	SoftIRQPct            float64  `json:"softirq_pct"`
+	EstimatedUserPct      float64  `json:"estimated_user_pct,omitempty"`
+	EstimatedSystemPct    float64  `json:"estimated_system_pct,omitempty"`
 	ContextSwitchesPerSec int64    `json:"context_switches_per_sec"`
 	LoadAvg1              float64  `json:"load_avg_1"`
 	LoadAvg5              float64  `json:"load_avg_5"`
@@ -142,6 +157,8 @@ type CPUData struct {
 	PerCPU                []PerCPU `json:"per_cpu,omitempty"`
 	SchedLatencyNS        int64    `json:"sched_latency_ns,omitempty"`
 	SchedMinGranularityNS int64    `json:"sched_min_granularity_ns,omitempty"`
+	PSISome10             float64  `json:"psi_some_10,omitempty"`
+	PSISome60             float64  `json:"psi_some_60,omitempty"`
 }
 
 type PerCPU struct {
@@ -174,6 +191,8 @@ type MemoryData struct {
 	PSIFull60            float64          `json:"psi_full_60,omitempty"`
 	PSISome10            float64          `json:"psi_some_10,omitempty"`
 	PSISome60            float64          `json:"psi_some_60,omitempty"`
+	THPEnabled           string           `json:"thp_enabled,omitempty"`
+	MinFreeKbytes        int              `json:"min_free_kbytes,omitempty"`
 	NUMANodes            []NUMANode       `json:"numa_nodes,omitempty"`
 	BuddyInfo            map[string][]int `json:"buddy_info,omitempty"`
 }
@@ -188,48 +207,53 @@ type NUMANode struct {
 }
 
 type DiskDevice struct {
-	Name         string `json:"name"`
-	ReadOps      int64  `json:"read_ops"`
-	WriteOps     int64  `json:"write_ops"`
-	ReadBytes    int64  `json:"read_bytes"`
-	WriteBytes   int64  `json:"write_bytes"`
-	IOInProgress int64  `json:"io_in_progress"`
-	IOTimeMs     int64  `json:"io_time_ms"`
-	WeightedIOMs int64  `json:"weighted_io_ms"`
-	Scheduler    string `json:"scheduler,omitempty"`
-	QueueDepth   int    `json:"queue_depth,omitempty"`
-	Rotational   bool   `json:"rotational"`
-	ReadAheadKB  int    `json:"read_ahead_kb,omitempty"`
+	Name         string  `json:"name"`
+	ReadOps      int64   `json:"read_ops"`
+	WriteOps     int64   `json:"write_ops"`
+	ReadBytes    int64   `json:"read_bytes"`
+	WriteBytes   int64   `json:"write_bytes"`
+	IOInProgress int64   `json:"io_in_progress"`
+	IOTimeMs     int64   `json:"io_time_ms"`
+	WeightedIOMs int64   `json:"weighted_io_ms"`
+	AvgLatencyMs float64 `json:"avg_latency_ms,omitempty"`
+	Scheduler    string  `json:"scheduler,omitempty"`
+	QueueDepth   int     `json:"queue_depth,omitempty"`
+	Rotational   bool    `json:"rotational"`
+	ReadAheadKB  int     `json:"read_ahead_kb,omitempty"`
 }
 
 type DiskData struct {
-	Devices  []DiskDevice `json:"devices"`
-	TotalOps int64        `json:"total_ops"`
-	ReadOps  int64        `json:"read_ops"`
-	WriteOps int64        `json:"write_ops"`
+	Devices   []DiskDevice `json:"devices"`
+	TotalOps  int64        `json:"total_ops"`
+	ReadOps   int64        `json:"read_ops"`
+	WriteOps  int64        `json:"write_ops"`
+	PSISome10 float64      `json:"psi_some_10,omitempty"`
+	PSISome60 float64      `json:"psi_some_60,omitempty"`
 }
 
 type NetworkInterface struct {
-	Name      string `json:"name"`
-	RxBytes   int64  `json:"rx_bytes"`
-	TxBytes   int64  `json:"tx_bytes"`
-	RxPackets int64  `json:"rx_packets"`
-	TxPackets int64  `json:"tx_packets"`
-	RxErrors  int64  `json:"rx_errors"`
-	TxErrors  int64  `json:"tx_errors"`
-	RxDropped int64  `json:"rx_dropped"`
-	TxDropped int64  `json:"tx_dropped"`
+	Name         string  `json:"name"`
+	RxBytes      int64   `json:"rx_bytes"`
+	TxBytes      int64   `json:"tx_bytes"`
+	RxPackets    int64   `json:"rx_packets"`
+	TxPackets    int64   `json:"tx_packets"`
+	RxErrors     int64   `json:"rx_errors"`
+	TxErrors     int64   `json:"tx_errors"`
+	RxDropped    int64   `json:"rx_dropped"`
+	TxDropped    int64   `json:"tx_dropped"`
+	ErrorsPerSec float64 `json:"errors_per_sec,omitempty"`
 }
 
 type TCPStats struct {
-	CurrEstab      int `json:"curr_estab"`
-	ActiveOpens    int `json:"active_opens"`
-	PassiveOpens   int `json:"passive_opens"`
-	RetransSegs    int `json:"retrans_segs"`
-	InErrs         int `json:"in_errs"`
-	OutRsts        int `json:"out_rsts"`
-	TimeWaitCount  int `json:"time_wait_count"`
-	CloseWaitCount int `json:"close_wait_count"`
+	CurrEstab      int     `json:"curr_estab"`
+	ActiveOpens    int     `json:"active_opens"`
+	PassiveOpens   int     `json:"passive_opens"`
+	RetransSegs    int     `json:"retrans_segs"`
+	RetransRate    float64 `json:"retrans_rate_per_sec"`
+	InErrs         int     `json:"in_errs"`
+	OutRsts        int     `json:"out_rsts"`
+	TimeWaitCount  int     `json:"time_wait_count"`
+	CloseWaitCount int     `json:"close_wait_count"`
 }
 
 type NetworkData struct {
@@ -239,6 +263,8 @@ type NetworkData struct {
 	TCPRmem          string             `json:"tcp_rmem,omitempty"`
 	TCPWmem          string             `json:"tcp_wmem,omitempty"`
 	SomaxConn        int                `json:"somaxconn,omitempty"`
+	TCPMaxSynBacklog int                `json:"tcp_max_syn_backlog,omitempty"`
+	TCPTWReuse       int                `json:"tcp_tw_reuse,omitempty"`
 	TotalConnections int                `json:"total_connections,omitempty"`
 	AvgLatencyMs     float64            `json:"avg_latency_ms,omitempty"`
 	P99LatencyMs     float64            `json:"p99_latency_ms,omitempty"`
@@ -260,12 +286,13 @@ type ProcessInfo struct {
 }
 
 type ProcessData struct {
-	TopByCPU []ProcessInfo `json:"top_by_cpu,omitempty"`
-	TopByMem []ProcessInfo `json:"top_by_mem,omitempty"`
-	Total    int           `json:"total_processes"`
-	Running  int           `json:"running"`
-	Sleeping int           `json:"sleeping"`
-	Zombie   int           `json:"zombie"`
+	TopByCPU     []ProcessInfo `json:"top_by_cpu,omitempty"`
+	TopByMem     []ProcessInfo `json:"top_by_mem,omitempty"`
+	Total        int           `json:"total_processes"`
+	Running      int           `json:"running"`
+	Sleeping     int           `json:"sleeping"`
+	Zombie       int           `json:"zombie"`
+	ExcludedPIDs []int         `json:"excluded_pids,omitempty"`
 }
 
 type StackData struct {

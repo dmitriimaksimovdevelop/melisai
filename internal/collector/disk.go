@@ -7,12 +7,16 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/baikal/sysdiag/internal/model"
 )
+
+// partitionRe matches partition suffixes: sda1, nvme0n1p1, etc.
+var partitionRe = regexp.MustCompile(`^(sd[a-z]+|hd[a-z]+|vd[a-z]+)\d+$|^(nvme\d+n\d+)p\d+$|^(mmcblk\d+)p\d+$`)
 
 // DiskCollector gathers disk I/O metrics from procfs/sysfs (Tier 1).
 type DiskCollector struct {
@@ -79,6 +83,12 @@ func (c *DiskCollector) Collect(ctx context.Context, cfg CollectConfig) (*model.
 			WeightedIOMs: int64(s2.wIOTimeMs - s1.wIOTimeMs),
 		}
 
+		// Compute average I/O latency (Brendan Gregg, SP ch.9)
+		totalOps := dev.ReadOps + dev.WriteOps
+		if totalOps > 0 {
+			dev.AvgLatencyMs = float64(dev.WeightedIOMs) / float64(totalOps)
+		}
+
 		// Enrich with sysfs data
 		basePath := filepath.Join(c.sysRoot, "block", name)
 		if _, err := os.Stat(basePath); err == nil {
@@ -95,6 +105,9 @@ func (c *DiskCollector) Collect(ctx context.Context, cfg CollectConfig) (*model.
 		data.WriteOps += dev.WriteOps
 	}
 
+	// I/O PSI pressure
+	c.parseIOPSI(data)
+
 	return &model.Result{
 		Collector: c.Name(),
 		Category:  c.Category(),
@@ -103,6 +116,36 @@ func (c *DiskCollector) Collect(ctx context.Context, cfg CollectConfig) (*model.
 		EndTime:   time.Now(),
 		Data:      data,
 	}, nil
+}
+
+func (c *DiskCollector) parseIOPSI(data *model.DiskData) {
+	f, err := os.Open(filepath.Join(c.procRoot, "pressure", "io"))
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		fields := strings.Fields(line)
+		if len(fields) < 3 || fields[0] != "some" {
+			continue
+		}
+		for _, field := range fields[1:] {
+			parts := strings.SplitN(field, "=", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			val, _ := strconv.ParseFloat(parts[1], 64)
+			switch parts[0] {
+			case "avg10":
+				data.PSISome10 = val
+			case "avg60":
+				data.PSISome60 = val
+			}
+		}
+	}
 }
 
 func (c *DiskCollector) readDiskStats() map[string]diskStatsRaw {
@@ -122,9 +165,11 @@ func (c *DiskCollector) readDiskStats() map[string]diskStatsRaw {
 		}
 		name := fields[2]
 
-		// Skip partitions (only process whole disks like sda, nvme0n1)
-		// Simple heuristic: skip if name ends with digit AND contains 'p' partition
-		// For now, include everything and let the UI filter
+		// Skip virtual devices and partitions — only process whole disks
+		// (sda, nvme0n1, etc.) to avoid double-counting I/O.
+		if isVirtualOrPartition(name) {
+			continue
+		}
 		readOps, _ := strconv.ParseUint(fields[3], 10, 64)
 		readSectors, _ := strconv.ParseUint(fields[5], 10, 64)
 		writeOps, _ := strconv.ParseUint(fields[7], 10, 64)
@@ -170,4 +215,15 @@ func (c *DiskCollector) readFile(path string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(data))
+}
+
+// isVirtualOrPartition returns true for devices that should be excluded:
+// loop devices, ram disks, device-mapper, and partitions (sda1, nvme0n1p1).
+func isVirtualOrPartition(name string) bool {
+	if strings.HasPrefix(name, "loop") ||
+		strings.HasPrefix(name, "ram") ||
+		strings.HasPrefix(name, "dm-") {
+		return true
+	}
+	return partitionRe.MatchString(name)
 }

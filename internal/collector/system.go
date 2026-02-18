@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -20,10 +19,16 @@ import (
 type SystemCollector struct {
 	procRoot string
 	sysRoot  string
+	cmdRun   CommandRunner
 }
 
 func NewSystemCollector(procRoot, sysRoot string) *SystemCollector {
-	return &SystemCollector{procRoot: procRoot, sysRoot: sysRoot}
+	return &SystemCollector{procRoot: procRoot, sysRoot: sysRoot, cmdRun: &ExecCommandRunner{}}
+}
+
+// NewSystemCollectorWithRunner creates a SystemCollector with a custom CommandRunner for testing.
+func NewSystemCollectorWithRunner(procRoot, sysRoot string, runner CommandRunner) *SystemCollector {
+	return &SystemCollector{procRoot: procRoot, sysRoot: sysRoot, cmdRun: runner}
 }
 
 func (c *SystemCollector) Name() string     { return "system_info" }
@@ -96,7 +101,7 @@ func (c *SystemCollector) readFile(path string) string {
 
 // collectFilesystems runs `df` to get filesystem info.
 func (c *SystemCollector) collectFilesystems(ctx context.Context) []model.FilesystemInfo {
-	out, err := exec.CommandContext(ctx, "df", "-P", "-T").Output()
+	out, err := c.cmdRun.Run(ctx, "df", "-P", "-T")
 	if err != nil {
 		return nil
 	}
@@ -169,7 +174,7 @@ func (c *SystemCollector) collectBlockDevices() []model.BlockDevice {
 
 // collectDmesg gathers error/warning kernel messages.
 func (c *SystemCollector) collectDmesg(ctx context.Context) []model.LogEntry {
-	out, err := exec.CommandContext(ctx, "dmesg", "--level=err,warn", "-T", "--nopager").Output()
+	out, err := c.cmdRun.Run(ctx, "dmesg", "--level=err,warn", "-T", "--nopager")
 	if err != nil {
 		// dmesg may need root; not fatal
 		return nil

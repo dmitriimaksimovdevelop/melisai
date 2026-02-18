@@ -1,0 +1,4 @@
+TIME     PID    COMM             SIG  TPID   RESULT
+08:01:15 1234   bash             15   5678   0
+08:01:20 9012   systemd          9    3456   0
+08:01:25 7890   kill             2    1234   0

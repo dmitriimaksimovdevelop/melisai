@@ -1,0 +1,5 @@
+target:swapper/0;__schedule;schedule_idle;do_idle;cpuidle_enter;cpuidle_enter_state 450000
+target:postgres;__schedule;schedule;futex_wait_queue;futex_wait;do_futex;__x64_sys_futex 125000
+target:java;__schedule;schedule;ep_poll;do_epoll_wait;__x64_sys_epoll_wait 98000
+target:nginx;__schedule;schedule;inet_csk_accept;inet_csk_wait_for_connect 75000
+target:python3;__schedule;schedule;pipe_read;new_sync_read;vfs_read 32000

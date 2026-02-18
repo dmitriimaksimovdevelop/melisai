@@ -1,0 +1,6 @@
+Tracing ext4 operations slower than 1 ms
+TIME     COMM           PID    T BYTES   OFF_KB   LAT(ms) FILENAME
+10:30:01 postgres       1234   R 8192    0          5.23  base/16384/16385
+10:30:02 postgres       1234   S 0       0         12.50  base/16384/16385
+10:30:05 tar            5678   R 65536   1024       3.10  backup.tar.gz
+10:30:08 java           9012   W 32768   2048       8.75  application.log

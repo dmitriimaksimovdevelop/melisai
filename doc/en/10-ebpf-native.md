@@ -83,25 +83,41 @@ func AssessCapabilities() Capabilities {
 }
 ```
 
-## The Loader (Stub)
+## The Loader (Real Implementation)
 
-Currently, `loader.go` provides a framework for future cilium/ebpf programs:
+`loader.go` uses the `cilium/ebpf` library to load and attach programs:
 
 ```go
-type EBPFLoader struct {
-    specs    map[string]*ebpf.CollectionSpec
-    programs map[string]*ebpf.Program
+type Loader struct {
+    btfInfo *BTFInfo
+    verbose bool
 }
 
-func (l *EBPFLoader) Load(programName string) error {
-    // 1. Load pre-compiled eBPF ELF from embedded assets
-    // 2. Apply CO-RE relocations using kernel BTF
-    // 3. Attach to kprobes/tracepoints
-    // 4. Create ring buffer for events
+func (l *Loader) TryLoad(ctx context.Context, spec *ProgramSpec) (*LoadedProgram, error) {
+    // 1. Load compiled BPF object (.o file)
+    // spec.ObjectFile points to the file compiled with clang
+    collSpec, err := ebpf.LoadCollectionSpec(spec.ObjectFile)
+
+    // 2. Load into kernel (verifies and JITs)
+    // This step performs CO-RE relocations automatically
+    coll, err := ebpf.NewCollection(collSpec)
+
+    // 3. Attach kprobe
+    kp, err := link.Kprobe(spec.AttachTo, prog, nil)
+
+    return &LoadedProgram{Collection: coll, Link: kp}, nil
 }
 ```
 
-The actual eBPF programs (`.o` files compiled from C with clang) will be embedded using Go's `embed` package. This means the sysdiag binary is fully self-contained — no external files needed at runtime.
+The system requires `.o` files (compiled eBPF bytecode) to be present. In the future, these can be embedded into the binary using Go's `//go:embed` directive.
+
+### Native Collectors
+
+The `NativeTcpretransCollector` (`internal/collector/ebpf_tcpretrans.go`) demonstrates how to use this:
+
+1.  **Reads Perf Buffer**: Uses `perf.NewReader` to read events from the BPF map.
+2.  **Parses Binary Data**: Uses `binary.Read` to convert raw bytes into Go structs.
+3.  **No Context Switch Overhead** (userspace): Unlike BCC (which calls Python -> C -> Go), this is pure Go -> Kernel.
 
 ## Why Tier 3 Matters
 
