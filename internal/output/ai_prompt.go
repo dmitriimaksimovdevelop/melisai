@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/baikal/sysdiag/internal/model"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
 )
 
 // GenerateAIPrompt creates a dynamic, context-aware prompt for AI analysis.
@@ -16,7 +16,7 @@ func GenerateAIPrompt(report *model.Report) *model.AIContext {
 
 	var sb strings.Builder
 	sb.WriteString("You are a Linux systems performance expert. ")
-	sb.WriteString("Analyze the following sysdiag report and provide:\n")
+	sb.WriteString("Analyze the following melisai report and provide:\n")
 	sb.WriteString("1. Root cause analysis for any detected anomalies\n")
 	sb.WriteString("2. Performance optimization recommendations with specific commands\n")
 	sb.WriteString("3. Risk assessment for production workloads\n")
@@ -99,7 +99,7 @@ func GenerateAIPrompt(report *model.Report) *model.AIContext {
 	if report.Metadata.ObserverOverhead != nil {
 		oh := report.Metadata.ObserverOverhead
 		sb.WriteString(fmt.Sprintf(
-			"\nOBSERVER EFFECT NOTE: sysdiag's own overhead during collection: "+
+			"\nOBSERVER EFFECT NOTE: melisai's own overhead during collection: "+
 				"CPU=%dms user + %dms system, Memory=%dMB RSS, "+
 				"Disk I/O=%dKB read + %dKB write, Context switches=%d. "+
 				"%d BCC tool processes excluded from TopByCPU/TopByMem. "+

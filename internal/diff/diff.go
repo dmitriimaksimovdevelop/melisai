@@ -1,4 +1,4 @@
-// Package diff compares two sysdiag reports and highlights regressions/improvements.
+// Package diff compares two melisai reports and highlights regressions/improvements.
 package diff
 
 import (
@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/baikal/sysdiag/internal/model"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
 )
 
 // DiffReport contains the comparison between two reports.

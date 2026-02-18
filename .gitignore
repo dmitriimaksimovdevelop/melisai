@@ -28,5 +28,7 @@ context/
 
 # Gemini agent artifacts
 .gemini/
-sysdiag
+melisai
 .claude/
+collector.test
+*.test

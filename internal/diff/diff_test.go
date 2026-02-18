@@ -3,7 +3,7 @@ package diff
 import (
 	"testing"
 
-	"github.com/baikal/sysdiag/internal/model"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
 )
 
 func TestCompareReports(t *testing.T) {

@@ -1,4 +1,4 @@
-module github.com/baikal/sysdiag
+module github.com/dmitriimaksimovdevelop/melisai
 
 go 1.23.0
 

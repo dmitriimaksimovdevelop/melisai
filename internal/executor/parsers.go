@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/baikal/sysdiag/internal/model"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
 )
 
 // --- Histogram Parser ---

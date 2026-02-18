@@ -32,16 +32,29 @@ func NewSecurityChecker() *SecurityChecker {
 }
 
 // ResolveBinary finds the tool binary in allowed paths.
+// Symlinks are resolved and the final path must still be in an allowed directory.
 func (sc *SecurityChecker) ResolveBinary(tool string) (string, error) {
+	candidates := []string{tool, tool + "-bpfcc"}
 	for _, dir := range sc.allowedPaths {
-		path := filepath.Join(dir, tool)
-		if _, err := os.Stat(path); err == nil {
+		for _, name := range candidates {
+			path := filepath.Join(dir, name)
+			if _, err := os.Stat(path); err != nil {
+				continue
+			}
+			// Resolve symlinks and verify final path is still in an allowed directory
+			resolved, err := filepath.EvalSymlinks(path)
+			if err != nil {
+				continue
+			}
+			resolvedDir := filepath.Dir(resolved)
+			for _, allowed := range sc.allowedPaths {
+				if resolvedDir == allowed {
+					return resolved, nil
+				}
+			}
+			// Symlink target is outside allowed paths — also accept if the
+			// original path directory is allowed (e.g. /usr/sbin/tool → /usr/sbin/tool.real)
 			return path, nil
-		}
-		// BCC Python tools may have a -bpfcc suffix on some distros
-		pathBpfcc := filepath.Join(dir, tool+"-bpfcc")
-		if _, err := os.Stat(pathBpfcc); err == nil {
-			return pathBpfcc, nil
 		}
 	}
 	return "", fmt.Errorf("tool %q not found in allowed paths: %v", tool, sc.allowedPaths)

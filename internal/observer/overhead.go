@@ -7,27 +7,27 @@ import (
 	"strings"
 )
 
-// OverheadSummary captures sysdiag's own resource consumption during collection.
+// OverheadSummary captures melisai's own resource consumption during collection.
 type OverheadSummary struct {
-	SelfPID         int    `json:"self_pid"`
-	ChildPIDs       []int  `json:"child_pids"`
-	CPUUserMs       int64  `json:"cpu_user_ms"`
-	CPUSystemMs     int64  `json:"cpu_system_ms"`
-	MemoryRSSBytes  int64  `json:"memory_rss_bytes"`
-	DiskReadBytes   int64  `json:"disk_read_bytes"`
-	DiskWriteBytes  int64  `json:"disk_write_bytes"`
-	ContextSwitches int64  `json:"context_switches"`
+	SelfPID         int   `json:"self_pid"`
+	ChildPIDs       []int `json:"child_pids"`
+	CPUUserMs       int64 `json:"cpu_user_ms"`
+	CPUSystemMs     int64 `json:"cpu_system_ms"`
+	MemoryRSSBytes  int64 `json:"memory_rss_bytes"`
+	DiskReadBytes   int64 `json:"disk_read_bytes"`
+	DiskWriteBytes  int64 `json:"disk_write_bytes"`
+	ContextSwitches int64 `json:"context_switches"`
 }
 
 // procSnapshot holds raw values from /proc/[pid]/stat and /proc/[pid]/io.
 type procSnapshot struct {
-	utime           uint64 // in clock ticks
-	stime           uint64
-	rss             int64  // in pages
-	voluntaryCtxSw  int64
-	nonvolCtxSw     int64
-	readBytes       int64
-	writeBytes      int64
+	utime          uint64 // in clock ticks
+	stime          uint64
+	rss            int64 // in pages
+	voluntaryCtxSw int64
+	nonvolCtxSw    int64
+	readBytes      int64
+	writeBytes     int64
 }
 
 // beforeSnapshot stores the initial readings for delta calculation.
@@ -36,7 +36,7 @@ type beforeSnapshot struct {
 	children map[int]procSnapshot
 }
 
-// SnapshotBefore records the current resource usage of sysdiag and its children.
+// SnapshotBefore records the current resource usage of melisai and its children.
 // Call this before starting collectors.
 func (t *PIDTracker) SnapshotBefore() {
 	t.mu.Lock()
@@ -53,7 +53,7 @@ func (t *PIDTracker) SnapshotBefore() {
 }
 
 // SnapshotAfter reads current resource usage and computes the delta
-// since SnapshotBefore. Returns a summary of sysdiag's overhead.
+// since SnapshotBefore. Returns a summary of melisai's overhead.
 func (t *PIDTracker) SnapshotAfter() OverheadSummary {
 	t.mu.RLock()
 	before := t.before

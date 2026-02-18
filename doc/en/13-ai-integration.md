@@ -2,7 +2,7 @@
 
 ## Overview
 
-sysdiag generates a structured prompt that can be fed to any LLM (GPT-4, Claude, Gemini, etc.) for automated analysis. The prompt includes the report data plus a curated database of 21 anti-patterns.
+melisai generates a structured prompt that can be fed to any LLM (GPT-4, Claude, Gemini, etc.) for automated analysis. The prompt includes the report data plus a curated database of 21 anti-patterns.
 
 ## Source File: ai_prompt.go
 
@@ -80,7 +80,7 @@ This keeps the prompt focused and avoids wasting AI tokens on irrelevant pattern
 ## Usage
 
 ```bash
-sudo sysdiag collect --ai-prompt --output report.json
+sudo melisai collect --ai-prompt --output report.json
 ```
 
 This adds an `ai_prompt` field to the JSON output that can be directly sent to an AI API.

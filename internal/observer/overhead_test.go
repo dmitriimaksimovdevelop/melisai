@@ -6,7 +6,7 @@ import (
 
 func TestParseProcStat(t *testing.T) {
 	// Realistic /proc/self/stat content
-	content := "12345 (sysdiag) S 1 12345 12345 0 -1 4194560 1000 0 0 0 500 200 0 0 20 0 27 0 0 0 8192" +
+	content := "12345 (melisai) S 1 12345 12345 0 -1 4194560 1000 0 0 0 500 200 0 0 20 0 27 0 0 0 8192" +
 		" 18446744073709551615 0 0 0 0 0 0 0 0 0 0 0 0 17 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
 
 	snap := parseProcStat(content)
@@ -70,7 +70,7 @@ func TestParseProcIO_Empty(t *testing.T) {
 }
 
 func TestParseProcStatus(t *testing.T) {
-	content := `Name:	sysdiag
+	content := `Name:	melisai
 Umask:	0022
 State:	S (sleeping)
 Tgid:	12345

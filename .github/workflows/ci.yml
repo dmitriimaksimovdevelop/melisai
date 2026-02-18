@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ develop, main ]
+    branches: [develop, main]
   pull_request:
-    branches: [ develop, main ]
+    branches: [develop, main]
 
 jobs:
   test:
@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ['1.21', '1.22', '1.23']
+        go-version: ["1.23", "1.24"]
 
     steps:
       - name: Checkout code
@@ -48,7 +48,7 @@ jobs:
           go tool cover -func=coverage.out
 
       - name: Upload coverage
-        if: matrix.go-version == '1.23'
+        if: matrix.go-version == '1.24'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
@@ -71,7 +71,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: "1.24"
 
       - name: Build binary
         env:
@@ -80,14 +80,14 @@ jobs:
         run: |
           COMMIT=$(git rev-parse --short HEAD)
           go build -ldflags "-X main.version=dev-${COMMIT} -s -w" \
-            -o bin/sysdiag-${{ matrix.goos }}-${{ matrix.goarch }} \
-            ./cmd/sysdiag/
+            -o bin/melisai-${{ matrix.goos }}-${{ matrix.goarch }} \
+            ./cmd/melisai/
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: sysdiag-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: bin/sysdiag-*
+          name: melisai-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: bin/melisai-*
 
   integration:
     name: Integration (Docker)
@@ -102,15 +102,15 @@ jobs:
       - name: Download binary
         uses: actions/download-artifact@v4
         with:
-          name: sysdiag-linux-amd64
+          name: melisai-linux-amd64
 
       - name: Prepare binary
         run: |
-          chmod +x sysdiag-linux-amd64
-          mv sysdiag-linux-amd64 /tmp/sysdiag
+          chmod +x melisai-linux-amd64
+          mv melisai-linux-amd64 /tmp/melisai
 
       - name: Run integration tests
-        run: bash tests/integration/docker_test.sh --binary /tmp/sysdiag
+        run: bash tests/integration/docker_test.sh --binary /tmp/melisai
 
   lint:
     name: Lint
@@ -123,7 +123,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: "1.24"
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6

@@ -4,7 +4,7 @@
 
 Tier 3 is the future of Linux observability: loading eBPF programs directly from Go code without Python, without external binaries, without needing the bcc-tools package installed.
 
-sysdiag's `internal/ebpf/` package provides the infrastructure for this.
+melisai's `internal/ebpf/` package provides the infrastructure for this.
 
 ## Source Files: ebpf/ (3 files)
 

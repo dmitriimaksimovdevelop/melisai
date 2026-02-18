@@ -2,7 +2,7 @@
 
 ## Overview
 
-Collecting metrics is useful, but automatically flagging problems is better. sysdiag's anomaly detection engine (`internal/model/anomaly.go`) applies 11 threshold rules based on Brendan Gregg's recommended values.
+Collecting metrics is useful, but automatically flagging problems is better. melisai's anomaly detection engine (`internal/model/anomaly.go`) applies 11 threshold rules based on Brendan Gregg's recommended values.
 
 ## Source File: anomaly.go
 

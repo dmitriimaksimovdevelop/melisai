@@ -1,10 +1,10 @@
-# sysdiag
+# melisai
 
 **Comprehensive Linux system performance analyzer** -- single Go binary that collects metrics via BPF/eBPF tools, procfs/sysfs, and standard utilities. Produces structured JSON reports optimized for AI-driven diagnostics.
 
 ## Overview
 
-sysdiag implements Brendan Gregg's **USE Method** (Utilization, Saturation, Errors) to systematically analyze Linux performance. It collects data at three tiers with automatic fallback:
+melisai implements Brendan Gregg's **USE Method** (Utilization, Saturation, Errors) to systematically analyze Linux performance. It collects data at three tiers with automatic fallback:
 
 | Tier | Source | Requirements |
 |------|--------|-------------|
@@ -30,34 +30,34 @@ sysdiag implements Brendan Gregg's **USE Method** (Utilization, Saturation, Erro
 
 ```bash
 # Build (requires Go 1.21+)
-GOOS=linux GOARCH=amd64 go build -o sysdiag ./cmd/sysdiag/
+GOOS=linux GOARCH=amd64 go build -o melisai ./cmd/melisai/
 
 # Deploy to server
-scp sysdiag root@server:/usr/local/bin/sysdiag
+scp melisai root@server:/usr/local/bin/melisai
 
 # Install BPF tools (run on the target Linux server)
-sudo sysdiag install
+sudo melisai install
 
 # Check what's available
-sudo sysdiag capabilities
+sudo melisai capabilities
 
 # Quick health check (10s, core metrics + key BCC tools)
-sudo sysdiag collect --profile quick -o report.json
+sudo melisai collect --profile quick -o report.json
 
 # Standard analysis (30s, all 67 BCC tools)
-sudo sysdiag collect --profile standard -o report.json
+sudo melisai collect --profile standard -o report.json
 
 # Deep analysis (60s, all tools + extra profiling)
-sudo sysdiag collect --profile deep --ai-prompt -o report.json
+sudo melisai collect --profile deep --ai-prompt -o report.json
 
 # Focus on specific subsystems
-sudo sysdiag collect --profile standard --focus network,disk
+sudo melisai collect --profile standard --focus network,disk
 
 # Compare two reports
-sysdiag diff baseline.json current.json -o diff.json
+melisai diff baseline.json current.json -o diff.json
 
 # Dry-run installation (show what would be installed)
-sudo sysdiag install --dry-run
+sudo melisai install --dry-run
 ```
 
 ## Collection Profiles
@@ -91,7 +91,7 @@ sudo sysdiag install --dry-run
 ## Architecture
 
 ```
-cmd/sysdiag/          CLI entry point (cobra)
+cmd/melisai/          CLI entry point (cobra)
 internal/
   |-- collector/      Tier 1 procfs/sysfs collectors (7) + BCC adapter
   |-- executor/       BCC tool runner + security + parsers + registry (67 tools)
@@ -112,7 +112,7 @@ JSON schema designed for machine readability and AI analysis:
 ```json
 {
   "metadata": {
-    "tool": "sysdiag",
+    "tool": "melisai",
     "schema_version": "1.0.0",
     "hostname": "Ubuntu-2404-noble-amd64-base",
     "kernel_version": "6.8.0-90-generic",
@@ -147,32 +147,32 @@ JSON schema designed for machine readability and AI analysis:
 
 ## AI Agent Usage Guide
 
-sysdiag is designed to be operated by AI agents (Claude Code, etc.) for automated performance analysis. Here's the recommended workflow:
+melisai is designed to be operated by AI agents (Claude Code, etc.) for automated performance analysis. Here's the recommended workflow:
 
 ### Step 1: Deploy and Install
 
 ```bash
 # Build on your dev machine
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o sysdiag ./cmd/sysdiag/
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o melisai ./cmd/melisai/
 
 # Deploy to target server
-scp sysdiag root@<server>:/usr/local/bin/sysdiag
+scp melisai root@<server>:/usr/local/bin/melisai
 
 # Install BCC tools (first time only)
-ssh root@<server> "sysdiag install"
+ssh root@<server> "melisai install"
 
 # Verify
-ssh root@<server> "sysdiag capabilities"
+ssh root@<server> "melisai capabilities"
 ```
 
 ### Step 2: Collect Data
 
 ```bash
 # For a quick health check
-ssh root@<server> "sysdiag collect --profile quick --ai-prompt -o /tmp/report.json"
+ssh root@<server> "melisai collect --profile quick --ai-prompt -o /tmp/report.json"
 
 # For full analysis
-ssh root@<server> "sysdiag collect --profile standard --ai-prompt -o /tmp/report.json"
+ssh root@<server> "melisai collect --profile standard --ai-prompt -o /tmp/report.json"
 
 # Download report
 scp root@<server>:/tmp/report.json ./report.json
@@ -196,21 +196,21 @@ The report contains everything needed for analysis:
 
 ```bash
 # Take baseline
-ssh root@<server> "sysdiag collect --profile standard -o /tmp/baseline.json"
+ssh root@<server> "melisai collect --profile standard -o /tmp/baseline.json"
 
 # ... make changes ...
 
 # Take current
-ssh root@<server> "sysdiag collect --profile standard -o /tmp/current.json"
+ssh root@<server> "melisai collect --profile standard -o /tmp/current.json"
 
 # Compare
-ssh root@<server> "sysdiag diff /tmp/baseline.json /tmp/current.json -o /tmp/diff.json"
+ssh root@<server> "melisai diff /tmp/baseline.json /tmp/current.json -o /tmp/diff.json"
 ```
 
 ### Key Patterns for AI Agents
 
 1. **Empty histogram data is normal** -- tools like `biolatency` return empty results when there's no I/O. This is not an error.
-2. **BCC tools use `-bpfcc` suffix** on Ubuntu/Debian (e.g., `/usr/sbin/runqlat-bpfcc`). sysdiag handles this automatically.
+2. **BCC tools use `-bpfcc` suffix** on Ubuntu/Debian (e.g., `/usr/sbin/runqlat-bpfcc`). melisai handles this automatically.
 3. **Tools that don't accept duration** (e.g., `oomkill`) are killed after `duration + 5s` via context cancellation.
 4. **Tier 3 (native eBPF)** requires compiled `.o` files. Currently only `tcpretrans` has a Tier 3 implementation. If the `.o` file is missing, it falls back to BCC.
 5. **The health score** is a weighted composite: CPU (30%), Memory (25%), Disk (25%), Network (20%). Score < 50 = critical, < 70 = warning.
@@ -220,7 +220,7 @@ ssh root@<server> "sysdiag diff /tmp/baseline.json /tmp/current.json -o /tmp/dif
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `tool "X" not found in allowed paths` | BCC tool not installed | Run `sysdiag install` |
+| `tool "X" not found in allowed paths` | BCC tool not installed | Run `melisai install` |
 | `no histogram buckets found` (in logs) | No events during collection | Normal -- tool returns empty result |
 | `binary "X" is not owned by root` | File permissions issue | `chown root:root /usr/sbin/X-bpfcc` |
 | Collection hangs | A BCC tool is stuck | Each tool has a `duration + 5s` timeout |
@@ -239,7 +239,7 @@ go test ./internal/executor/ -run TestRegistryToolCount -v
 go test ./internal/executor/ -run TestAllToolsParseFixtures -v
 
 # Cross-compile for Linux
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o sysdiag ./cmd/sysdiag/
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o melisai ./cmd/melisai/
 
 # Vet
 go vet ./...

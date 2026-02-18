@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate sysdiag JSON report structure.
+"""Validate melisai JSON report structure.
 
 Usage: python3 verify_report.py /path/to/report.json
 Exit 0 = valid, exit 1 = invalid (prints errors to stderr).
@@ -27,8 +27,8 @@ def validate(report):
 
     # --- Metadata ---
     meta = report["metadata"]
-    if meta.get("tool") != "sysdiag":
-        ok = fail(f"metadata.tool = {meta.get('tool')!r}, expected 'sysdiag'") and False
+    if meta.get("tool") != "melisai":
+        ok = fail(f"metadata.tool = {meta.get('tool')!r}, expected 'melisai'") and False
 
     overhead = meta.get("observer_overhead")
     if overhead is not None:

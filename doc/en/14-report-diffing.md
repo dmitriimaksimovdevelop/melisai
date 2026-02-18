@@ -4,12 +4,12 @@
 
 Comparing two reports answers: "Did my tuning improve things?" or "Is today's performance worse than yesterday?"
 
-sysdiag's `diff` package (`internal/diff/diff.go`) compares USE metrics, histograms, and anomalies between a baseline and current report.
+melisai's `diff` package (`internal/diff/diff.go`) compares USE metrics, histograms, and anomalies between a baseline and current report.
 
 ## Source File: diff.go
 
 - **Lines**: ~150
-- **Purpose**: Structured comparison of two sysdiag reports
+- **Purpose**: Structured comparison of two melisai reports
 
 ## Diff Structure
 
@@ -95,8 +95,8 @@ Histogram: biolatency
 ## Usage
 
 ```bash
-sysdiag diff baseline.json current.json
-sysdiag diff baseline.json current.json --json    # structured output
+melisai diff baseline.json current.json
+melisai diff baseline.json current.json --json    # structured output
 ```
 
 ---

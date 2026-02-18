@@ -4,7 +4,7 @@
 
 Disk I/O is often the bottleneck that masquerades as other problems. When a database is slow, it's usually waiting for disk. When an application has high latency, it might be a log file write blocking the event loop.
 
-sysdiag's `DiskCollector` (`internal/collector/disk.go`) uses two-point sampling of `/proc/diskstats` and enriches the data with sysfs device properties.
+melisai's `DiskCollector` (`internal/collector/disk.go`) uses two-point sampling of `/proc/diskstats` and enriches the data with sysfs device properties.
 
 ## Source File: disk.go
 

@@ -4,7 +4,7 @@
 
 Memory is the most misunderstood resource. "90% memory used" doesn't mean the server needs more RAM — most of it is probably cache. Understanding what `MemAvailable` vs `MemFree` means is crucial.
 
-sysdiag's `MemoryCollector` (`internal/collector/memory.go`) reads 6 data sources and provides a complete memory picture.
+melisai's `MemoryCollector` (`internal/collector/memory.go`) reads 6 data sources and provides a complete memory picture.
 
 ## Source File: memory.go
 

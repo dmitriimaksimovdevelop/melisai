@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/baikal/sysdiag/internal/model"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
 )
 
 // mockCommandRunner fakes external command execution for testing.

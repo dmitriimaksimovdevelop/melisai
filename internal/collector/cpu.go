@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/baikal/sysdiag/internal/model"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
 )
 
 // CPUCollector gathers CPU metrics from procfs (Tier 1).
@@ -90,7 +90,7 @@ func (c *CPUCollector) Collect(ctx context.Context, cfg CollectConfig) (*model.R
 	// CPU PSI pressure
 	c.parseCPUPSI(data)
 
-	// Observer-effect compensation: subtract sysdiag's own CPU usage
+	// Observer-effect compensation: subtract melisai's own CPU usage
 	if cfg.PIDTracker != nil {
 		overhead := cfg.PIDTracker.SnapshotAfter()
 		intervalMs := interval.Seconds() * 1000

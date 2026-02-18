@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/baikal/sysdiag/internal/model"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
 )
 
 func TestGenerateAIPrompt(t *testing.T) {

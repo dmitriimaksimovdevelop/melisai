@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/baikal/sysdiag/internal/model"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
 )
 
 // ContainerCollector detects container environments and cgroup metrics (Tier 1).

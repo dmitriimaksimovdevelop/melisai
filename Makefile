@@ -1,10 +1,10 @@
 
-.PHONY: all build clean generate test test-integration
+.PHONY: all build clean generate test test-integration test-validation
 
 all: build
 
 build:
-	go build -o sysdiag cmd/sysdiag/main.go
+	go build -o melisai cmd/melisai/main.go
 
 # Compile BPF programs
 # Requires clang and llvm
@@ -20,6 +20,9 @@ test:
 test-integration:
 	bash tests/integration/docker_test.sh
 
+test-validation:
+	bash tests/validation/run_validation.sh
+
 clean:
-	rm -f sysdiag
+	rm -f melisai
 	rm -f internal/ebpf/bpf/*.o

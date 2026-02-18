@@ -2,7 +2,7 @@
 
 ## Overview
 
-sysdiag produces three output types: structured JSON, SVG flame graphs, and AI prompts. The output package (`internal/output/`) handles formatting and writing.
+melisai produces three output types: structured JSON, SVG flame graphs, and AI prompts. The output package (`internal/output/`) handles formatting and writing.
 
 ## Source Files: output/ (5 files)
 
@@ -32,7 +32,7 @@ func WriteJSON(report *model.Report, path string) error {
 }
 ```
 
-**Atomic write pattern**: Writing to a temporary file and renaming prevents partial writes if sysdiag is killed mid-write. `os.Rename` is atomic on the same filesystem.
+**Atomic write pattern**: Writing to a temporary file and renaming prevents partial writes if melisai is killed mid-write. `os.Rename` is atomic on the same filesystem.
 
 ### JSON Schema
 
@@ -40,7 +40,7 @@ The complete JSON output follows this structure:
 ```json
 {
   "metadata": {
-    "tool": "sysdiag",
+    "tool": "melisai",
     "version": "0.2.0",
     "hostname": "...",
     "timestamp": "...",
@@ -133,7 +133,7 @@ func (p *ProgressReporter) Done(duration time.Duration) {
 
 Output during collection:
 ```
-sysdiag v0.2.0 — collecting with standard profile (30s)
+melisai v0.2.0 — collecting with standard profile (30s)
   cpu_utilization               ✓ 1.003s
   memory_info                   ✓ 12ms
   disk_io                       ✓ 1.001s

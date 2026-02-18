@@ -1,8 +1,8 @@
 # Chapter 0: Introduction
 
-## What is sysdiag?
+## What is melisai?
 
-**sysdiag** is a single Go binary that performs comprehensive Linux server performance analysis. It collects metrics from the kernel, analyzes them, and produces a structured JSON report that can be consumed by humans, AI/LLM, or monitoring systems.
+**melisai** is a single Go binary that performs comprehensive Linux server performance analysis. It collects metrics from the kernel, analyzes them, and produces a structured JSON report that can be consumed by humans, AI/LLM, or monitoring systems.
 
 Think of it as running 30+ diagnostic commands at once, but with structured output and automatic analysis.
 
@@ -16,11 +16,11 @@ Every system administrator has heard this. The server is slow. But what does "sl
 - Is the network dropping packets?
 - Is a container hitting its CPU quota?
 
-Without a systematic approach, you end up running random commands and guessing. **sysdiag** provides that systematic approach.
+Without a systematic approach, you end up running random commands and guessing. **melisai** provides that systematic approach.
 
 ## The USE Methodology
 
-sysdiag is built around Brendan Gregg's **USE Methodology** — a framework for analyzing system performance. USE stands for:
+melisai is built around Brendan Gregg's **USE Methodology** — a framework for analyzing system performance. USE stands for:
 
 | Letter | Meaning | Question to Ask |
 |--------|---------|-----------------|
@@ -52,7 +52,7 @@ USE guarantees you check **all three dimensions** for **every resource**, so you
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                        sysdiag binary                            │
+│                        melisai binary                            │
 ├──────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  ┌─────────────┐    ┌──────────────┐    ┌──────────────────────┐ │
@@ -88,7 +88,7 @@ USE guarantees you check **all three dimensions** for **every resource**, so you
 
 ## Tiered Collection
 
-Not every Linux system has the same capabilities. A minimal container might only have `/proc`, while a bare-metal server with a modern kernel can use native eBPF. sysdiag handles this with three tiers:
+Not every Linux system has the same capabilities. A minimal container might only have `/proc`, while a bare-metal server with a modern kernel can use native eBPF. melisai handles this with three tiers:
 
 ### Tier 1 — procfs/sysfs (Always Available)
 
@@ -137,7 +137,7 @@ Always: Use Tier 1 procfs collectors
 
 ## Collection Profiles
 
-sysdiag supports three profiles that control how long collection runs and which tools are used:
+melisai supports three profiles that control how long collection runs and which tools are used:
 
 | Profile | Duration | Capabilities |
 |---------|----------|-------------|
@@ -152,7 +152,7 @@ The output is a single JSON document designed for both human and machine consump
 ```json
 {
   "metadata": {
-    "tool": "sysdiag",
+    "tool": "melisai",
     "version": "0.2.0",
     "hostname": "web-server-01",
     "profile": "standard",
@@ -190,26 +190,26 @@ The output is a single JSON document designed for both human and machine consump
 
 ```bash
 # Primary command — collect system metrics
-sudo sysdiag collect [flags]
+sudo melisai collect [flags]
   --profile string    Collection profile: quick|standard|deep (default "standard")
   --focus string      Focus areas (comma-separated): cpu,disk,network,stacks
   --output string     Output file path (default: stdout)
   --ai-prompt         Include AI analysis prompt in output
 
 # Compare two reports
-sysdiag diff <baseline.json> <current.json> [--json]
+melisai diff <baseline.json> <current.json> [--json]
 
 # Check system capabilities
-sysdiag capabilities
+melisai capabilities
 
 # Install BPF tools
-sudo sysdiag install
+sudo melisai install
 ```
 
 ## Code Organization
 
 ```
-cmd/sysdiag/main.go          ← CLI entry point, flag parsing
+cmd/melisai/main.go          ← CLI entry point, flag parsing
 internal/
   collector/                  ← 7 Tier 1 data collectors
     collector.go              ← Collector interface + CollectConfig

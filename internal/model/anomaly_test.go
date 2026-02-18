@@ -55,9 +55,9 @@ func TestContainerAnomalyCategory(t *testing.T) {
 					Collector: "container",
 					Category:  "container",
 					Data: &ContainerData{
-						CPUThrottledPeriods: 500,  // above warning=100
-						MemoryLimit:         1e9,  // 1 GB
-						MemoryUsage:         9e8,  // 900 MB = 90% -> above warning=80
+						CPUThrottledPeriods: 500, // above warning=100
+						MemoryLimit:         1e9, // 1 GB
+						MemoryUsage:         9e8, // 900 MB = 90% -> above warning=80
 					},
 				},
 			},

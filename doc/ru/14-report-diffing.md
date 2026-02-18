@@ -15,7 +15,7 @@
 - **Regression**: delta > 5%
 
 ```bash
-sysdiag diff baseline.json current.json --json
+melisai diff baseline.json current.json --json
 ```
 
 ---

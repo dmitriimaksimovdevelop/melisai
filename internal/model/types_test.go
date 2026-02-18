@@ -8,7 +8,7 @@ import (
 func TestReportJSON(t *testing.T) {
 	report := &Report{
 		Metadata: Metadata{
-			Tool:          "sysdiag",
+			Tool:          "melisai",
 			Version:       "0.1.0",
 			SchemaVersion: "1.0.0",
 			Hostname:      "test-host",
@@ -65,7 +65,7 @@ func TestReportJSON(t *testing.T) {
 					Category:       "network",
 					Title:          "Enable BBR congestion control",
 					Commands:       []string{"sysctl -w net.ipv4.tcp_congestion_control=bbr"},
-					Persistent:     []string{"echo 'net.ipv4.tcp_congestion_control=bbr' >> /etc/sysctl.d/99-sysdiag.conf"},
+					Persistent:     []string{"echo 'net.ipv4.tcp_congestion_control=bbr' >> /etc/sysctl.d/99-melisai.conf"},
 					ExpectedImpact: "2-3x throughput on high-BDP links",
 					Evidence:       "tcp_congestion_control=cubic + retransmits=94/min",
 					Source:         "Brendan Gregg, Systems Performance ch.10",

@@ -4,7 +4,7 @@
 
 Network problems are notoriously hard to diagnose. Is it the application? The kernel? The network? Packet loss? Buffer exhaustion?
 
-sysdiag's `NetworkCollector` (`internal/collector/network.go`) collects data from three sources: per-interface counters, TCP protocol statistics, and socket state summaries.
+melisai's `NetworkCollector` (`internal/collector/network.go`) collects data from three sources: per-interface counters, TCP protocol statistics, and socket state summaries.
 
 ## Source File: network.go
 

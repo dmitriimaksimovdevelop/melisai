@@ -9,12 +9,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/baikal/sysdiag/internal/ebpf"
-	"github.com/baikal/sysdiag/internal/model"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/ebpf"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
 	"github.com/cilium/ebpf/perf"
 )
 
-// TcpretransEvent must match the C struct
+// TcpretransEvent must match the C struct in internal/ebpf/c/tcpretrans.bpf.c.
+// Layout: pid(4) + saddr(4) + daddr(4) + lport(2) + dport(2) + state(4) + type(1) + pad(3) + comm(16) = 40 bytes
 type TcpretransEvent struct {
 	Pid   uint32
 	Saddr uint32
@@ -23,8 +24,12 @@ type TcpretransEvent struct {
 	Dport uint16
 	State uint32
 	Type  uint8
+	_     [3]byte // padding
 	Comm  [16]byte
 }
+
+// tcpretransEventMinSize is the minimum expected size of a raw perf event sample.
+const tcpretransEventMinSize = 28 // pid + saddr + daddr + lport + dport + state + type
 
 type NativeTcpretransCollector struct {
 	loader *ebpf.Loader
@@ -112,7 +117,7 @@ func (c *NativeTcpretransCollector) Collect(ctx context.Context, cfg CollectConf
 		}
 
 		// Parse event
-		if len(record.RawSample) < 28 { // roughly sizeof struct
+		if len(record.RawSample) < tcpretransEventMinSize {
 			continue
 		}
 

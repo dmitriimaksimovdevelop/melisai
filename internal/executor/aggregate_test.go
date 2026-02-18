@@ -3,7 +3,7 @@ package executor
 import (
 	"testing"
 
-	"github.com/baikal/sysdiag/internal/model"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
 )
 
 func TestAggregateByField(t *testing.T) {

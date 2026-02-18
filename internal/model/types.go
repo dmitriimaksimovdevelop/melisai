@@ -1,4 +1,4 @@
-// Package model defines all data types for the sysdiag report output.
+// Package model defines all data types for the melisai report output.
 // These types are serialized to JSON and consumed by AI/LLM for analysis.
 // Schema version: 1.0.0
 package model
@@ -7,7 +7,7 @@ import "time"
 
 // --- Report: top-level output ---
 
-// Report is the complete sysdiag output document.
+// Report is the complete melisai output document.
 type Report struct {
 	Metadata   Metadata            `json:"metadata"`
 	System     SystemInfo          `json:"system"`
@@ -36,16 +36,16 @@ type Metadata struct {
 	ObserverOverhead *ObserverOverhead `json:"observer_overhead,omitempty"`
 }
 
-// ObserverOverhead records sysdiag's own resource consumption during collection.
+// ObserverOverhead records melisai's own resource consumption during collection.
 type ObserverOverhead struct {
-	SelfPID         int    `json:"self_pid"`
-	ChildPIDs       []int  `json:"child_pids"`
-	CPUUserMs       int64  `json:"cpu_user_ms"`
-	CPUSystemMs     int64  `json:"cpu_system_ms"`
-	MemoryRSSBytes  int64  `json:"memory_rss_bytes"`
-	DiskReadBytes   int64  `json:"disk_read_bytes"`
-	DiskWriteBytes  int64  `json:"disk_write_bytes"`
-	ContextSwitches int64  `json:"context_switches"`
+	SelfPID         int   `json:"self_pid"`
+	ChildPIDs       []int `json:"child_pids"`
+	CPUUserMs       int64 `json:"cpu_user_ms"`
+	CPUSystemMs     int64 `json:"cpu_system_ms"`
+	MemoryRSSBytes  int64 `json:"memory_rss_bytes"`
+	DiskReadBytes   int64 `json:"disk_read_bytes"`
+	DiskWriteBytes  int64 `json:"disk_write_bytes"`
+	ContextSwitches int64 `json:"context_switches"`
 }
 
 // SystemInfo describes the host OS, filesystems, and recent errors.

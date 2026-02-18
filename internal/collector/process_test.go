@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/baikal/sysdiag/internal/model"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
 )
 
 // --- helpers ---------------------------------------------------------------

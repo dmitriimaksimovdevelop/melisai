@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# Integration test: run sysdiag install + collect inside Docker containers
+# Integration test: run melisai install + collect inside Docker containers
 # for each supported distro.
 #
 # Usage:
 #   bash docker_test.sh                          # build binary, test all distros
-#   bash docker_test.sh --binary /path/to/sysdiag  # skip build, use existing binary
+#   bash docker_test.sh --binary /path/to/melisai  # skip build, use existing binary
 #   bash docker_test.sh --distro ubuntu:24.04      # test single distro
 #
 set -euo pipefail
@@ -31,10 +31,10 @@ done
 
 # --- Build binary if not provided ---
 if [[ -z "$BINARY" ]]; then
-    echo "==> Building sysdiag (linux/amd64)..."
-    BINARY="/tmp/sysdiag-integration-test"
+    echo "==> Building melisai (linux/amd64)..."
+    BINARY="/tmp/melisai-integration-test"
     (cd "$PROJECT_ROOT" && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build \
-        -o "$BINARY" ./cmd/sysdiag/)
+        -o "$BINARY" ./cmd/melisai/)
     echo "    Built: $BINARY"
 fi
 
@@ -74,14 +74,14 @@ for distro in "${DISTROS[@]}"; do
         continue
     fi
 
-    # Build a container with sysdiag + verify script
-    CONTAINER="sysdiag-test-$(echo "$distro" | tr ':/' '-')-$$"
+    # Build a container with melisai + verify script
+    CONTAINER="melisai-test-$(echo "$distro" | tr ':/' '-')-$$"
 
     # Start container with host PID namespace and privileged (needed for BPF)
     docker run -d --rm --privileged \
         --pid=host \
         --name "$CONTAINER" \
-        -v "$BINARY":/usr/local/bin/sysdiag:ro \
+        -v "$BINARY":/usr/local/bin/melisai:ro \
         -v "$VERIFY_SCRIPT":/tmp/verify_report.py:ro \
         "$distro" sleep 300 >/dev/null
 
@@ -90,25 +90,25 @@ for distro in "${DISTROS[@]}"; do
 
     # --- Install ---
     echo -n "  install: "
-    if docker exec "$CONTAINER" /usr/local/bin/sysdiag install >/dev/null 2>&1; then
+    if docker exec "$CONTAINER" /usr/local/bin/melisai install >/dev/null 2>&1; then
         RES_INSTALL[$distro]="PASS"
         echo "PASS"
     else
         RES_INSTALL[$distro]="FAIL"
         echo "FAIL"
         # Show last 20 lines of output for debugging
-        docker exec "$CONTAINER" /usr/local/bin/sysdiag install 2>&1 | tail -20 || true
+        docker exec "$CONTAINER" /usr/local/bin/melisai install 2>&1 | tail -20 || true
     fi
 
     # --- Collect ---
     echo -n "  collect: "
-    if docker exec "$CONTAINER" /usr/local/bin/sysdiag collect --profile quick -o /tmp/test.json >/dev/null 2>&1; then
+    if docker exec "$CONTAINER" /usr/local/bin/melisai collect --profile quick -o /tmp/test.json >/dev/null 2>&1; then
         RES_COLLECT[$distro]="PASS"
         echo "PASS"
     else
         RES_COLLECT[$distro]="FAIL"
         echo "FAIL"
-        docker exec "$CONTAINER" /usr/local/bin/sysdiag collect --profile quick -o /tmp/test.json 2>&1 | tail -20 || true
+        docker exec "$CONTAINER" /usr/local/bin/melisai collect --profile quick -o /tmp/test.json 2>&1 | tail -20 || true
     fi
 
     # --- Report validation ---

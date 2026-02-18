@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/baikal/sysdiag/internal/collector"
-	"github.com/baikal/sysdiag/internal/model"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/collector"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
 )
 
 // mockCollector implements collector.Collector for testing.
@@ -75,8 +75,8 @@ func TestOrchestratorRunBasic(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	if report.Metadata.Tool != "sysdiag" {
-		t.Errorf("tool = %q, want sysdiag", report.Metadata.Tool)
+	if report.Metadata.Tool != "melisai" {
+		t.Errorf("tool = %q, want melisai", report.Metadata.Tool)
 	}
 
 	if len(report.Categories) != 2 {

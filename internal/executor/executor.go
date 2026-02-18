@@ -128,12 +128,17 @@ type LimitedWriter struct {
 func (lw *LimitedWriter) Write(p []byte) (int, error) {
 	if lw.written >= lw.N {
 		lw.Truncated = true
-		return len(p), nil // silently discard
+		// Return len(p) to satisfy exec.Cmd which expects all bytes consumed.
+		// The Truncated flag signals that data was discarded.
+		return len(p), nil
 	}
 	remaining := lw.N - lw.written
 	if int64(len(p)) > remaining {
-		p = p[:remaining]
+		n, err := lw.W.Write(p[:remaining])
+		lw.written += int64(n)
 		lw.Truncated = true
+		// Return original len to avoid broken pipe from exec.Cmd
+		return len(p), err
 	}
 	n, err := lw.W.Write(p)
 	lw.written += int64(n)

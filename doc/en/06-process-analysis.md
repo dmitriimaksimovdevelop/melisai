@@ -79,7 +79,7 @@ func (c *ProcessCollector) readProcPID(pid int) (procStat, error) {
 
 ## Process States
 
-| State | Symbol | Meaning | In sysdiag |
+| State | Symbol | Meaning | In melisai |
 |-------|--------|---------|-----------|
 | Running | R | Currently executing or in run queue | `running` counter |
 | Sleeping | S | Interruptible sleep — waiting for event | `sleeping` counter |
@@ -91,7 +91,7 @@ func (c *ProcessCollector) readProcPID(pid int) (procStat, error) {
 
 ## File Descriptors
 
-Every open file, socket, pipe, and device uses a file descriptor. sysdiag counts FDs per process using `/proc/[pid]/fd/`:
+Every open file, socket, pipe, and device uses a file descriptor. melisai counts FDs per process using `/proc/[pid]/fd/`:
 
 | FD Count | Assessment |
 |----------|-----------|

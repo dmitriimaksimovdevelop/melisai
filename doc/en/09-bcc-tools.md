@@ -6,7 +6,7 @@ Tier 1 collectors read counters from `/proc` — they tell you **what** is happe
 
 That's where BCC (BPF Compiler Collection) tools come in. They attach eBPF programs to kernel functions and trace events in real-time, giving you histograms, per-event details, and stack traces.
 
-sysdiag's executor package (`internal/executor/`) manages running these tools securely and parsing their output.
+melisai's executor package (`internal/executor/`) manages running these tools securely and parsing their output.
 
 ## Source Files: executor/ (5 files)
 

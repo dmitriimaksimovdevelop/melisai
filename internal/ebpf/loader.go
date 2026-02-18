@@ -90,16 +90,14 @@ func (l *Loader) TryLoad(ctx context.Context, spec *ProgramSpec) (*LoadedProgram
 	}
 
 	// 3. Attach kprobe
-	// Find the program
+	// Find the program by section name, then by program name, then by attach target
 	prog := coll.Programs[spec.Section]
 	if prog == nil {
-		// Try to find by name if section fails
-		// Iterating over Spec.Programs map might be safer
-		for _, p := range coll.Programs {
-			prog = p
-			break // Just take the first one for now?
-			// A more robust implementation would match by name/section explicitly.
-		}
+		prog = coll.Programs[spec.Name]
+	}
+	if prog == nil {
+		// Try kprobe/ prefixed section (libbpf convention)
+		prog = coll.Programs["kprobe/"+spec.AttachTo]
 	}
 
 	if prog == nil {

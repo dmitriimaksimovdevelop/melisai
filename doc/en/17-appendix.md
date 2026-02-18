@@ -75,10 +75,10 @@
 ## CLI Reference
 
 ```
-sysdiag — Linux server performance diagnostic tool
+melisai — Linux server performance diagnostic tool
 
 Usage:
-  sysdiag [command]
+  melisai [command]
 
 Commands:
   collect       Collect system metrics and generate report

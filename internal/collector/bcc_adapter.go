@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/baikal/sysdiag/internal/executor"
-	"github.com/baikal/sysdiag/internal/model"
-	"github.com/baikal/sysdiag/internal/observer"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/executor"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/observer"
 )
 
 // BCCCollector adapts the executor.BCCExecutor to the Collector interface.

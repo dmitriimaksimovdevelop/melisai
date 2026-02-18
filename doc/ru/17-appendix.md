@@ -20,16 +20,16 @@
 ## Справка CLI
 
 ```
-sysdiag collect [флаги]
+melisai collect [флаги]
   --profile string    quick|standard|deep (по умолчанию "standard")
   --focus string      Области фокуса: cpu,disk,network,stacks,all
   --output string     Путь к файлу (по умолчанию: stdout)
   --ai-prompt         Включить промпт для AI
   --quiet             Без прогресса
 
-sysdiag diff <baseline.json> <current.json> [--json]
-sysdiag capabilities
-sudo sysdiag install
+melisai diff <baseline.json> <current.json> [--json]
+melisai capabilities
+sudo melisai install
 ```
 
 ## Литература

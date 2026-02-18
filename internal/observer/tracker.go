@@ -1,5 +1,5 @@
-// Package observer provides observer-effect mitigation for sysdiag.
-// It tracks sysdiag's own PID and all spawned BCC tool PIDs so that
+// Package observer provides observer-effect mitigation for melisai.
+// It tracks melisai's own PID and all spawned BCC tool PIDs so that
 // collectors can exclude self-generated noise from metrics.
 package observer
 
@@ -8,14 +8,14 @@ import (
 	"sync"
 )
 
-// PIDTracker is a thread-safe registry of sysdiag's own PID and
+// PIDTracker is a thread-safe registry of melisai's own PID and
 // all child BCC tool PIDs. Collectors use it to filter self-noise
 // from process lists, event streams, and stack traces.
 type PIDTracker struct {
 	mu       sync.RWMutex
 	selfPID  int
-	children map[int]string   // pid → tool name
-	before   *beforeSnapshot  // set by SnapshotBefore()
+	children map[int]string  // pid → tool name
+	before   *beforeSnapshot // set by SnapshotBefore()
 }
 
 // NewPIDTracker creates a PIDTracker seeded with the current process PID.
@@ -26,7 +26,7 @@ func NewPIDTracker() *PIDTracker {
 	}
 }
 
-// SelfPID returns sysdiag's own process ID.
+// SelfPID returns melisai's own process ID.
 func (t *PIDTracker) SelfPID() int {
 	return t.selfPID
 }
@@ -45,7 +45,7 @@ func (t *PIDTracker) Remove(pid int) {
 	t.mu.Unlock()
 }
 
-// IsOwnPID returns true if pid is sysdiag itself or any tracked child.
+// IsOwnPID returns true if pid is melisai itself or any tracked child.
 func (t *PIDTracker) IsOwnPID(pid int) bool {
 	if pid == t.selfPID {
 		return true
@@ -56,7 +56,7 @@ func (t *PIDTracker) IsOwnPID(pid int) bool {
 	return ok
 }
 
-// AllPIDs returns sysdiag's PID plus all currently tracked child PIDs.
+// AllPIDs returns melisai's PID plus all currently tracked child PIDs.
 func (t *PIDTracker) AllPIDs() []int {
 	t.mu.RLock()
 	defer t.mu.RUnlock()

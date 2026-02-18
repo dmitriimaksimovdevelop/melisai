@@ -2,7 +2,7 @@
 
 ## Overview
 
-After detecting anomalies, sysdiag goes further: it suggests specific `sysctl` commands to fix common issues. The recommendations engine (`internal/model/recommendations.go`) generates actionable tuning advice based on collected metrics.
+After detecting anomalies, melisai goes further: it suggests specific `sysctl` commands to fix common issues. The recommendations engine (`internal/model/recommendations.go`) generates actionable tuning advice based on collected metrics.
 
 ## How It Works
 
@@ -113,8 +113,8 @@ All `sysctl` changes are temporary — they reset on reboot. Each recommendation
 sysctl -w net.ipv4.tcp_congestion_control=bbr
 
 # Permanent (survives reboot):
-echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.d/99-sysdiag.conf
-sysctl -p /etc/sysctl.d/99-sysdiag.conf
+echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.d/99-melisai.conf
+sysctl -p /etc/sysctl.d/99-melisai.conf
 ```
 
 ---

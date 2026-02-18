@@ -15,12 +15,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/baikal/sysdiag/internal/collector"
-	"github.com/baikal/sysdiag/internal/ebpf"
-	"github.com/baikal/sysdiag/internal/executor"
-	"github.com/baikal/sysdiag/internal/model"
-	"github.com/baikal/sysdiag/internal/observer"
-	"github.com/baikal/sysdiag/internal/output"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/collector"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/ebpf"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/executor"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/observer"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/output"
 )
 
 // Orchestrator coordinates all collectors and produces a Report.
@@ -55,7 +55,9 @@ func (o *Orchestrator) Run(ctx context.Context) (*model.Report, error) {
 	// Signal handling — started AFTER all context derivations to avoid data race
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	sigDone := make(chan struct{})
 	go func() {
+		defer close(sigDone)
 		select {
 		case sig := <-sigCh:
 			o.progress.Log("Received %v, shutting down gracefully (partial report)...", sig)
@@ -63,7 +65,10 @@ func (o *Orchestrator) Run(ctx context.Context) (*model.Report, error) {
 		case <-ctx.Done():
 		}
 	}()
-	defer signal.Stop(sigCh)
+	defer func() {
+		signal.Stop(sigCh)
+		<-sigDone // wait for goroutine to exit
+	}()
 
 	// Create PID tracker for observer-effect mitigation
 	tracker := observer.NewPIDTracker()
@@ -88,8 +93,26 @@ func (o *Orchestrator) Run(ctx context.Context) (*model.Report, error) {
 			defer wg.Done()
 
 			name := c.Name()
-			o.progress.Log("  [%s] collecting...", name)
 			start := time.Now()
+
+			// Recover from panics in individual collectors
+			defer func() {
+				if r := recover(); r != nil {
+					o.progress.Log("  [%s] panic: %v", name, r)
+					mu.Lock()
+					results[c.Category()] = append(results[c.Category()], &model.Result{
+						Collector: name,
+						Category:  c.Category(),
+						Tier:      c.Available().Tier,
+						StartTime: start,
+						EndTime:   time.Now(),
+						Errors:    []string{fmt.Sprintf("panic: %v", r)},
+					})
+					mu.Unlock()
+				}
+			}()
+
+			o.progress.Log("  [%s] collecting...", name)
 
 			result, err := c.Collect(ctx, o.config)
 			elapsed := time.Since(start)
@@ -120,6 +143,10 @@ func (o *Orchestrator) Run(ctx context.Context) (*model.Report, error) {
 	}
 
 	wg.Wait()
+
+	// Cancel context so the signal-handling goroutine exits promptly
+	// instead of waiting for the profile timeout.
+	cancel()
 
 	// Sort results within each category by collector name for deterministic output
 	categories := make(map[string][]model.Result)
@@ -207,7 +234,7 @@ func (o *Orchestrator) buildMetadata(profile ProfileConfig) model.Metadata {
 	hostname, _ := os.Hostname()
 
 	meta := model.Metadata{
-		Tool:          "sysdiag",
+		Tool:          "melisai",
 		Version:       "0.1.0",
 		SchemaVersion: "1.0.0",
 		Hostname:      hostname,

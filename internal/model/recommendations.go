@@ -21,7 +21,7 @@ func GenerateRecommendations(report *Report) []Recommendation {
 						Priority:       priority,
 						Category:       "cpu",
 						Title:          "CPU saturation detected — investigate high-CPU processes",
-						Commands:       []string{"sysdiag collect --profile deep --focus stacks"},
+						Commands:       []string{"melisai collect --profile deep --focus stacks"},
 						Persistent:     []string{},
 						ExpectedImpact: "Identify CPU-bound bottleneck",
 						Evidence:       formatEvidence("load_avg_1=%.2f, num_cpus=%d", cpu.LoadAvg1, cpu.NumCPUs),
@@ -39,8 +39,8 @@ func GenerateRecommendations(report *Report) []Recommendation {
 							"sysctl -w kernel.sched_min_granularity_ns=750000",
 						},
 						Persistent: []string{
-							"echo 'kernel.sched_latency_ns=6000000' >> /etc/sysctl.d/99-sysdiag.conf",
-							"echo 'kernel.sched_min_granularity_ns=750000' >> /etc/sysctl.d/99-sysdiag.conf",
+							"echo 'kernel.sched_latency_ns=6000000' >> /etc/sysctl.d/99-melisai.conf",
+							"echo 'kernel.sched_min_granularity_ns=750000' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Lower tail latency for latency-sensitive workloads",
 						Evidence:       formatEvidence("sched_latency_ns=%d", cpu.SchedLatencyNS),
@@ -63,7 +63,7 @@ func GenerateRecommendations(report *Report) []Recommendation {
 						Title:    "Reduce swappiness for database/latency-sensitive workloads",
 						Commands: []string{"sysctl -w vm.swappiness=10"},
 						Persistent: []string{
-							"echo 'vm.swappiness=10' >> /etc/sysctl.d/99-sysdiag.conf",
+							"echo 'vm.swappiness=10' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Reduce swap-induced latency spikes",
 						Evidence:       formatEvidence("swappiness=%d, swap_used=%d", mem.Swappiness, mem.SwapUsedBytes),
@@ -81,8 +81,8 @@ func GenerateRecommendations(report *Report) []Recommendation {
 							"sysctl -w vm.dirty_background_ratio=5",
 						},
 						Persistent: []string{
-							"echo 'vm.dirty_ratio=10' >> /etc/sysctl.d/99-sysdiag.conf",
-							"echo 'vm.dirty_background_ratio=5' >> /etc/sysctl.d/99-sysdiag.conf",
+							"echo 'vm.dirty_ratio=10' >> /etc/sysctl.d/99-melisai.conf",
+							"echo 'vm.dirty_background_ratio=5' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Reduce periodic write stalls on heavy I/O workloads",
 						Evidence:       formatEvidence("dirty_ratio=%d", mem.DirtyRatio),
@@ -96,7 +96,7 @@ func GenerateRecommendations(report *Report) []Recommendation {
 						Category:       "memory",
 						Title:          "Consider disabling memory overcommit for production",
 						Commands:       []string{"sysctl -w vm.overcommit_memory=2"},
-						Persistent:     []string{"echo 'vm.overcommit_memory=2' >> /etc/sysctl.d/99-sysdiag.conf"},
+						Persistent:     []string{"echo 'vm.overcommit_memory=2' >> /etc/sysctl.d/99-melisai.conf"},
 						ExpectedImpact: "Prevent OOM kills by enforcing commit limit",
 						Evidence:       formatEvidence("overcommit_memory=%d", mem.OvercommitMemory),
 						Source:         "Linux kernel documentation",
@@ -121,8 +121,8 @@ func GenerateRecommendations(report *Report) []Recommendation {
 							"sysctl -w net.ipv4.tcp_congestion_control=bbr",
 						},
 						Persistent: []string{
-							"echo 'net.core.default_qdisc=fq' >> /etc/sysctl.d/99-sysdiag.conf",
-							"echo 'net.ipv4.tcp_congestion_control=bbr' >> /etc/sysctl.d/99-sysdiag.conf",
+							"echo 'net.core.default_qdisc=fq' >> /etc/sysctl.d/99-melisai.conf",
+							"echo 'net.ipv4.tcp_congestion_control=bbr' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "2-3x throughput on high-BDP links, lower retransmits",
 						Evidence:       formatEvidence("tcp_congestion_control=%s", net.CongestionCtrl),
@@ -135,7 +135,7 @@ func GenerateRecommendations(report *Report) []Recommendation {
 						Priority:       priority,
 						Category:       "network",
 						Title:          "Investigate TCP retransmissions",
-						Commands:       []string{"sysdiag collect --profile deep --focus network"},
+						Commands:       []string{"melisai collect --profile deep --focus network"},
 						ExpectedImpact: "Identify network path issues causing packet loss",
 						Evidence:       formatEvidence("retrans_segs=%d", net.TCP.RetransSegs),
 						Source:         "Brendan Gregg, Systems Performance ch.10",
@@ -149,7 +149,7 @@ func GenerateRecommendations(report *Report) []Recommendation {
 						Title:    "Increase listen backlog for high-traffic servers",
 						Commands: []string{"sysctl -w net.core.somaxconn=4096"},
 						Persistent: []string{
-							"echo 'net.core.somaxconn=4096' >> /etc/sysctl.d/99-sysdiag.conf",
+							"echo 'net.core.somaxconn=4096' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Prevent connection drops under burst load",
 						Evidence:       formatEvidence("somaxconn=%d", net.SomaxConn),
@@ -165,7 +165,7 @@ func GenerateRecommendations(report *Report) []Recommendation {
 						Title:    "Increase TCP receive buffer sizes",
 						Commands: []string{"sysctl -w net.ipv4.tcp_rmem='4096 87380 6291456'"},
 						Persistent: []string{
-							"echo 'net.ipv4.tcp_rmem=4096 87380 6291456' >> /etc/sysctl.d/99-sysdiag.conf",
+							"echo 'net.ipv4.tcp_rmem=4096 87380 6291456' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Better throughput on high-BDP paths",
 						Evidence:       formatEvidence("tcp_rmem=%s", net.TCPRmem),
@@ -180,7 +180,7 @@ func GenerateRecommendations(report *Report) []Recommendation {
 						Title:    "Increase TCP send buffer sizes",
 						Commands: []string{"sysctl -w net.ipv4.tcp_wmem='4096 65536 6291456'"},
 						Persistent: []string{
-							"echo 'net.ipv4.tcp_wmem=4096 65536 6291456' >> /etc/sysctl.d/99-sysdiag.conf",
+							"echo 'net.ipv4.tcp_wmem=4096 65536 6291456' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Better throughput on high-BDP paths",
 						Evidence:       formatEvidence("tcp_wmem=%s", net.TCPWmem),
@@ -196,7 +196,7 @@ func GenerateRecommendations(report *Report) []Recommendation {
 						Title:    "Enable TIME_WAIT socket reuse",
 						Commands: []string{"sysctl -w net.ipv4.tcp_tw_reuse=1"},
 						Persistent: []string{
-							"echo 'net.ipv4.tcp_tw_reuse=1' >> /etc/sysctl.d/99-sysdiag.conf",
+							"echo 'net.ipv4.tcp_tw_reuse=1' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Reduce TIME_WAIT socket accumulation on busy servers",
 						Evidence:       formatEvidence("tcp_tw_reuse=%d, timewait_count=%d", net.TCPTWReuse, net.TCP.TimeWaitCount),
@@ -212,7 +212,7 @@ func GenerateRecommendations(report *Report) []Recommendation {
 						Title:    "Increase SYN backlog for high-connection-rate servers",
 						Commands: []string{"sysctl -w net.ipv4.tcp_max_syn_backlog=8192"},
 						Persistent: []string{
-							"echo 'net.ipv4.tcp_max_syn_backlog=8192' >> /etc/sysctl.d/99-sysdiag.conf",
+							"echo 'net.ipv4.tcp_max_syn_backlog=8192' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Handle connection bursts without SYN drops",
 						Evidence:       formatEvidence("tcp_max_syn_backlog=%d", net.TCPMaxSynBacklog),
@@ -298,7 +298,7 @@ func GenerateRecommendations(report *Report) []Recommendation {
 						Title:    "Increase vm.min_free_kbytes for large memory system",
 						Commands: []string{"sysctl -w vm.min_free_kbytes=131072"},
 						Persistent: []string{
-							"echo 'vm.min_free_kbytes=131072' >> /etc/sysctl.d/99-sysdiag.conf",
+							"echo 'vm.min_free_kbytes=131072' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Reduce direct reclaim stalls under memory pressure",
 						Evidence:       formatEvidence("min_free_kbytes=%d, total_bytes=%d", mem.MinFreeKbytes, mem.TotalBytes),
@@ -333,4 +333,3 @@ func isLowTCPBuffer(buf string) bool {
 	}
 	return maxVal < 4194304 // 4MB
 }
-

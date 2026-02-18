@@ -113,7 +113,7 @@ func TestDiskSchedulerRecommendation(t *testing.T) {
 						},
 						{
 							Name:       "sdb",
-							Rotational: true,  // HDD
+							Rotational: true,       // HDD
 							Scheduler:  "deadline", // should recommend bfq
 						},
 					},
@@ -233,7 +233,7 @@ func TestMinFreeKbytesRecommendation(t *testing.T) {
 			"memory": {
 				{Data: &MemoryData{
 					TotalBytes:    32 * 1024 * 1024 * 1024, // 32 GB
-					MinFreeKbytes: 32768,                    // < 65536 threshold
+					MinFreeKbytes: 32768,                   // < 65536 threshold
 				}},
 			},
 		},
@@ -263,7 +263,7 @@ func TestMinFreeKbytesNoRecommendationWhenSufficient(t *testing.T) {
 			"memory": {
 				{Data: &MemoryData{
 					TotalBytes:    32 * 1024 * 1024 * 1024, // 32 GB
-					MinFreeKbytes: 131072,                   // >= 65536 threshold
+					MinFreeKbytes: 131072,                  // >= 65536 threshold
 				}},
 			},
 		},

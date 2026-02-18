@@ -4,7 +4,7 @@
 
 Containers (Docker, Kubernetes) use Linux cgroups to limit resources. The most insidious container problem is **CPU throttling** — your container silently pauses when it exceeds its CPU quota. The application just sees mysterious latency spikes.
 
-sysdiag's `ContainerCollector` (`internal/collector/container.go`) detects the container runtime, version, and reads cgroup metrics that reveal throttling and memory pressure.
+melisai's `ContainerCollector` (`internal/collector/container.go`) detects the container runtime, version, and reads cgroup metrics that reveal throttling and memory pressure.
 
 ## Source File: container.go
 
@@ -88,7 +88,7 @@ func (c *ContainerCollector) extractContainerID(cgroupPath string) string {
 // memory/memory.usage_in_bytes → bytes
 ```
 
-**Critical difference**: v1 reports `throttled_time` in ***nanoseconds***, v2 in ***microseconds***. sysdiag normalizes v1 by dividing by 1000.
+**Critical difference**: v1 reports `throttled_time` in ***nanoseconds***, v2 in ***microseconds***. melisai normalizes v1 by dividing by 1000.
 
 ## Cgroup CPU Throttling — The Silent Killer
 
@@ -132,7 +132,7 @@ memory.current = 1879048192   ← 1.75GB currently used (87.5%)
 If current > max → OOM kill!
 ```
 
-sysdiag reports this as a USE metric: `container_memory.utilization = current / limit × 100`
+melisai reports this as a USE metric: `container_memory.utilization = current / limit × 100`
 
 ## Diagnostic Examples
 

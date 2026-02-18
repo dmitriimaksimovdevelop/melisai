@@ -7,8 +7,8 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/baikal/sysdiag/internal/model"
-	"github.com/baikal/sysdiag/internal/observer"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/observer"
 )
 
 // CommandRunner abstracts external command execution for testability.
@@ -83,7 +83,7 @@ type CollectConfig struct {
 	// SysRoot is the path to sysfs mount (default "/sys").
 	SysRoot string
 
-	// PIDTracker tracks sysdiag's own PID and child BCC tool PIDs
+	// PIDTracker tracks melisai's own PID and child BCC tool PIDs
 	// for observer-effect mitigation. May be nil if not configured.
 	PIDTracker *observer.PIDTracker
 }

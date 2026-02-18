@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/baikal/sysdiag/internal/model"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
 )
 
 // testdata layout (relative to this file):

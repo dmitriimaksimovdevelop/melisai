@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/baikal/sysdiag/internal/model"
+	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
 )
 
 // MemoryCollector gathers memory metrics from procfs (Tier 1).
