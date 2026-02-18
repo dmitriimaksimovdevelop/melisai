@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"path/filepath"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -77,14 +76,8 @@ func (l *Loader) TryLoad(ctx context.Context, spec *ProgramSpec) (*LoadedProgram
 	}
 
 	// 1. Load the compiled BPF object
-	// We assume the object file is relative to executable or CWD
-	// Real implementation might search in a standard path
-	path := spec.ObjectFile
-	if !filepath.IsAbs(path) {
-		// Just use as is, assuming running from root
-	}
-
-	collSpec, err := ebpf.LoadCollectionSpec(path)
+	// Object file path is relative to CWD or absolute.
+	collSpec, err := ebpf.LoadCollectionSpec(spec.ObjectFile)
 	if err != nil {
 		return nil, &LoadError{Program: spec.Name, Err: fmt.Errorf("load spec: %w", err)}
 	}
