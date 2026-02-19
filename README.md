@@ -1,52 +1,68 @@
 # melisai
 
-**Comprehensive Linux system performance analyzer** -- single Go binary that collects metrics via BPF/eBPF tools, procfs/sysfs, and standard utilities. Produces structured JSON reports optimized for AI-driven diagnostics.
+**Linux performance diagnostics for AI agents.** Single Go binary. Collects 67 BCC/eBPF tools + procfs metrics. Outputs structured JSON with health score, anomalies, and recommendations. Ships with an MCP server for interactive use from Claude Desktop, Cursor, or any MCP-compatible client.
 
-## Overview
+[![Go 1.23+](https://img.shields.io/badge/Go-1.23%2B-00ADD8?logo=go)](https://go.dev)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![BCC Coverage](https://img.shields.io/badge/BCC_tools-67%2F80-green)](https://github.com/iovisor/bcc)
 
-melisai implements Brendan Gregg's **USE Method** (Utilization, Saturation, Errors) to systematically analyze Linux performance. It collects data at three tiers with automatic fallback:
+```
+$ sudo melisai collect --profile quick -o report.json
 
-| Tier | Source | Requirements |
-|------|--------|-------------|
-| **Tier 1** | `/proc`, `/sys`, `ss`, `dmesg` | Always works, no root |
-| **Tier 2** | BCC tools (67 tools) | Root + bcc-tools |
-| **Tier 3** | Native eBPF (cilium/ebpf) | Root + kernel >= 5.8 with BTF |
+  melisai v0.1.1 | profile=quick | duration=10s
 
-## Features
+  Tier 1 (procfs)  ████████████████████████████████████████ 7/7   2.1s
+  Tier 2 (BCC)     ████████████████████████████████████████ 4/4  10.3s
 
-- **7 Tier 1 collectors** -- CPU, memory, disk, network, process, container, system
-- **67 BCC tool parsers** -- histogram, tabular events, folded stacks, periodic
-- **Security controls** -- binary verification (root-owned, not world-writable), environment sanitization
-- **Per-application profiling** -- `--pid` targets 24 BCC tools to a specific process, `--cgroup` scopes to a container
-- **Two-phase collection** -- Tier 1 baselines captured before BCC tools run (eliminates observer effect)
-- **USE metrics** -- automatic computation for CPU, memory, disk, network, container resources
-- **20 anomaly thresholds** -- warning/critical severity with Gregg's recommended values, delta-based metrics
-- **Health score** -- weighted 0-100 score based on USE methodology
-- **Sysctl recommendations** -- actionable commands with expected impact and source citations
-- **AI prompt generation** -- dynamic, context-aware prompt with 27 known anti-patterns, PID/cgroup-aware
-- **FlameGraph SVG** -- inline SVG generator from folded stacks
-- **Report diff** -- regression/improvement detection with significance classification
-- **Installer** -- auto-detects distro (Ubuntu/Debian/CentOS/Fedora/Arch) and installs BPF tools
+  Health Score:  68 / 100  ⚠️
+  Anomalies:     cpu_utilization CRITICAL (98.7%)
+                 load_average WARNING (3.2x CPUs)
+  Recommendations: 2
 
-## MCP Server (AI Agent Integration)
-
-melisai includes a built-in [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server, allowing AI agents (Claude Desktop, Cursor, Zed, etc.) to interactively diagnose system performance over stdio.
-
-```bash
-# Start MCP server (stdio JSON-RPC)
-melisai mcp
+  Report saved to report.json
 ```
 
-**Exposed tools:**
+---
 
-| Tool | Description | Args |
-|------|-------------|------|
-| `get_health` | Quick health check (~1s, Tier 1 only, no root) | — |
-| `collect_metrics` | Full performance profile (Tier 1 + BCC/eBPF) | `profile` (quick/standard/deep), `focus`, `pid` |
-| `explain_anomaly` | Root causes + recommendations for an anomaly | `anomaly_id` (required) |
-| `list_anomalies` | List all 23 detectable anomaly metric IDs | — |
+## Why melisai?
 
-**Claude Desktop / Cursor configuration:**
+Most performance tools give you raw numbers. melisai gives you **a diagnosis**.
+
+- Runs Brendan Gregg's [USE Method](https://www.brendangregg.com/usemethod.html) automatically
+- Flags anomalies with severity (warning/critical) using field-tested thresholds
+- Computes a single **health score** (0-100) so an AI agent can decide what to do next
+- Generates a context-aware **AI prompt** with 23 known anti-patterns
+- Works over **MCP** (Model Context Protocol) so Claude/Cursor can diagnose a server interactively
+
+---
+
+## Quick Start
+
+```bash
+# 1. Build (requires Go 1.23+, cross-compile from macOS/Linux)
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o melisai ./cmd/melisai/
+
+# 2. Deploy
+scp melisai root@server:/usr/local/bin/
+
+# 3. Install BCC tools on the server (first time only)
+ssh root@server "melisai install"
+
+# 4. Run
+ssh root@server "melisai collect --profile quick -o /tmp/report.json"
+```
+
+---
+
+## MCP Server
+
+melisai includes a built-in [Model Context Protocol](https://modelcontextprotocol.io/) server. AI agents connect over stdio and interactively diagnose system performance -- no file juggling required.
+
+```bash
+melisai mcp   # starts stdio JSON-RPC server
+```
+
+**Claude Desktop / Cursor config** (`claude_desktop_config.json`):
 
 ```json
 {
@@ -59,267 +75,237 @@ melisai mcp
 }
 ```
 
-**Typical AI agent workflow:**
-1. `get_health` → quick 0-100 score + anomalies
-2. `explain_anomaly` → understand what's wrong
-3. `collect_metrics` → deep dive with full BCC/eBPF tracing
-4. `list_anomalies` → discover all detectable issues
+### Tools
 
-## Quick Start
+| Tool | What it does | Time |
+|------|-------------|------|
+| `get_health` | Quick 0-100 score + anomalies. Tier 1 only, no root needed | ~1s |
+| `collect_metrics` | Full profile with all BCC/eBPF tools. Args: `profile`, `focus`, `pid` | 10s-60s |
+| `explain_anomaly` | Root causes + recommendations for a specific anomaly ID | instant |
+| `list_anomalies` | All 23 detectable anomaly metric IDs with descriptions | instant |
 
-```bash
-# Build (requires Go 1.23+)
-GOOS=linux GOARCH=amd64 go build -o melisai ./cmd/melisai/
+### Typical workflow
 
-# Deploy to server
-scp melisai root@server:/usr/local/bin/melisai
-
-# Install BPF tools (run on the target Linux server)
-sudo melisai install
-
-# Check what's available
-sudo melisai capabilities
-
-# Quick health check (10s, core metrics + key BCC tools)
-sudo melisai collect --profile quick -o report.json
-
-# Standard analysis (30s, all 67 BCC tools)
-sudo melisai collect --profile standard -o report.json
-
-# Deep analysis (60s, all tools + extra profiling)
-sudo melisai collect --profile deep --ai-prompt -o report.json
-
-# Focus on specific subsystems
-sudo melisai collect --profile standard --focus network,disk
-
-# Profile a specific application by PID
-sudo melisai collect --profile standard --pid 12345 --ai-prompt -o app-report.json
-
-# Profile a container by cgroup path
-sudo melisai collect --profile standard --cgroup /sys/fs/cgroup/system.slice/myservice.service -o svc-report.json
-
-# Compare two reports
-melisai diff baseline.json current.json -o diff.json
-
-# Dry-run installation (show what would be installed)
-sudo melisai install --dry-run
 ```
+Agent                              melisai
+  │                                   │
+  ├── get_health ──────────────────►  │  "score: 68, cpu_utilization CRITICAL"
+  │                                   │
+  ├── explain_anomaly ─────────────►  │  "High CPU: root causes, what to check..."
+  │   anomaly_id: cpu_utilization     │
+  │                                   │
+  ├── collect_metrics ─────────────►  │  Full JSON report with 67 BCC tools,
+  │   profile: standard               │  histograms, events, stack traces,
+  │   focus: stacks                   │  AI prompt included
+  │                                   │
+  └── (agent analyzes & recommends)   │
+```
+
+---
+
+## How It Works
+
+melisai collects metrics at three tiers with automatic fallback:
+
+```
+Tier 1: /proc, /sys, ss, dmesg          ← always works, no root
+Tier 2: 67 BCC tools (runqlat, bio...)   ← root + bcc-tools
+Tier 3: native eBPF (cilium/ebpf)       ← root + kernel ≥ 5.8 + BTF
+```
+
+Collection runs in **two phases** to eliminate observer effect:
+1. **Phase 1** -- Tier 1 collectors capture clean baselines (CPU, memory, disk, network)
+2. **Phase 2** -- BCC/eBPF tools run without contaminating the baselines
+
+The report includes:
+
+| Section | Content |
+|---------|---------|
+| `summary.health_score` | Weighted 0-100 score (CPU 1.5x, Memory 1.5x, Disk 1.0x, Network 1.0x) |
+| `summary.anomalies[]` | Detected issues with severity, metric, value, threshold |
+| `summary.resources` | USE metrics per resource (utilization, saturation, errors) |
+| `summary.recommendations[]` | Copy-paste sysctl commands with citations |
+| `categories.*` | Raw data: histograms, events, stack traces per subsystem |
+| `ai_context.prompt` | Dynamic prompt with system context and 23 anti-patterns |
+
+---
 
 ## Collection Profiles
 
-| Profile | Duration | Collectors | Use Case |
+| Profile | Duration | What runs | Best for |
 |---------|----------|-----------|----------|
-| `quick` | 10s | 10 (Tier 1 + biolatency, tcpretrans, opensnoop, oomkill) | Fast health check |
-| `standard` | 30s | 66 (all Tier 1 + all 67 BCC tools) | Regular diagnostics |
-| `deep` | 60s | 66 + extended profiling (memleak, biostacks, wakeuptime, biotop) | Root cause analysis |
+| **quick** | 10s | Tier 1 + biolatency, tcpretrans, opensnoop, oomkill | Health checks, CI gates |
+| **standard** | 30s | All Tier 1 + all 67 BCC tools | Regular diagnostics |
+| **deep** | 60s | Everything + memleak, biostacks, wakeuptime, biotop | Root cause analysis |
 
-## BCC Tools Coverage (~84% of Brendan Gregg's Observability Diagram)
+```bash
+# Quick health check
+sudo melisai collect --profile quick -o report.json
 
-### CPU (10 tools)
-`runqlat`, `runqlen`, `cpudist`, `hardirqs`, `softirqs`, `runqslower`, `cpufreq`, `cpuunclaimed`, `llcstat`, `funccount`
+# Full analysis
+sudo melisai collect --profile standard --ai-prompt -o report.json
 
-### Disk (20 tools)
-`biolatency`, `biosnoop`, `biotop`, `bitesize`, `ext4slower`, `ext4dist`, `fileslower`, `filelife`, `mountsnoop`, `btrfsslower`, `btrfsdist`, `xfsslower`, `xfsdist`, `nfsslower`, `nfsdist`, `zfsslower`, `zfsdist`, `mdflush`, `scsilatency`, `nvmelatency`, `vfsstat`
+# Deep dive focused on disk
+sudo melisai collect --profile deep --focus disk -o report.json
 
-### Memory (7 tools)
-`cachestat`, `oomkill`, `drsnoop`, `shmsnoop`, `numamove`, `memleak`, `slabratetop`
+# Profile a specific process (24 BCC tools filter to this PID)
+sudo melisai collect --profile standard --pid 12345 -o app.json
 
-### Network (12 tools)
-`tcpconnlat`, `tcpretrans`, `tcprtt`, `tcpdrop`, `tcpstates`, `tcpconnect`, `tcpaccept`, `tcplife`, `udpconnect`, `sofdsnoop`, `sockstat`, `skbdrop`, `tcpsynbl`, `gethostlatency`
+# Profile a container
+sudo melisai collect --profile standard --cgroup /sys/fs/cgroup/system.slice/nginx.service -o nginx.json
 
-### Process (10 tools)
-`execsnoop`, `opensnoop`, `killsnoop`, `threadsnoop`, `syncsnoop`, `exitsnoop`, `statsnoop`, `capable`, `syscount`
-
-### Stack Traces (5 tools)
-`profile`, `offcputime`, `wakeuptime`, `offwaketime`, `biostacks`, `stackcount`
-
-## Architecture
-
-```
-cmd/melisai/          CLI entry point (cobra) + MCP subcommand
-internal/
-  |-- collector/      Tier 1 procfs/sysfs collectors (7) + BCC adapter (PID injection)
-  |-- executor/       BCC tool runner + security + parsers + registry (67 tools)
-  |-- ebpf/           BTF detection, CO-RE loader, tier decision
-  |-- mcp/            MCP server + tool handlers (get_health, collect_metrics, explain/list)
-  |-- model/          Data types, USE metrics, anomaly detection (20 rules), health score
-  |-- observer/       PID tracker, observer-effect measurement
-  |-- orchestrator/   Two-phase execution, signal handling, profiles
-  |-- output/         JSON formatter, FlameGraph SVG, AI prompt generator
-  |-- diff/           Report comparison engine
-  |-- installer/      Distro detection, package installation
-testdata/             Fixture files for parser tests
-context/              Design documents (ARCHITECTURE.md, PLAN.md, etc.)
+# Compare before/after
+melisai diff baseline.json current.json -o diff.json
 ```
 
-## Output Format
+---
 
-JSON schema designed for machine readability and AI analysis:
+## Output Example
+
+See [doc/example_report.md](doc/example_report.md) for a full production example -- a server scoring 32/100 where a message broker fsync storm on HDD cascades into I/O starvation across all containers.
+
+Abbreviated JSON:
 
 ```json
 {
   "metadata": {
-    "tool": "melisai",
-    "schema_version": "1.0.0",
-    "hostname": "Ubuntu-2404-noble-amd64-base",
-    "kernel_version": "6.8.0-90-generic",
-    "arch": "amd64",
-    "cpus": 20,
-    "memory_gb": 62,
-    "profile": "standard",
-    "duration": "30s"
+    "tool": "melisai", "schema_version": "1.0.0",
+    "hostname": "prod-web-01", "kernel_version": "6.8.0-90-generic",
+    "cpus": 20, "memory_gb": 62, "profile": "standard", "duration": "30s"
   },
   "categories": {
     "cpu": [
-      {"collector": "cpu_utilization", "tier": 1, "data": {"user_pct": 12.5, ...}},
-      {"collector": "runqlat", "tier": 2, "histograms": [{"name": "run_queue_latency", "p99": 64, ...}]}
+      {"collector": "cpu_utilization", "tier": 1, "data": {"user_pct": 12.5, "iowait_pct": 0.3, "idle_pct": 85.2}},
+      {"collector": "runqlat", "tier": 2, "histograms": [{"name": "runqlat", "unit": "us", "p50": 4, "p99": 64}]}
     ],
-    "disk": [...],
-    "memory": [...],
-    "network": [...],
-    "process": [...],
-    "stacktrace": [...],
-    "system": [...],
-    "container": [...]
+    "disk": [ ... ], "memory": [ ... ], "network": [ ... ],
+    "process": [ ... ], "stacktrace": [ ... ], "container": [ ... ]
   },
   "summary": {
     "health_score": 85,
-    "anomalies": [{"severity": "critical", "message": "CPU utilization at 98.7%"}],
-    "resources": {"cpu": {"utilization_pct": 45, "saturation_pct": 2, "errors": 0}},
-    "recommendations": [{"title": "Enable BBR congestion control", "commands": ["sysctl -w net.ipv4.tcp_congestion_control=bbr"]}]
+    "anomalies": [{"severity": "warning", "metric": "cpu_psi_pressure", "message": "CPU PSI: 12.5%"}],
+    "resources": {"cpu": {"utilization_pct": 14.8, "saturation_pct": 0.4, "errors": 0}},
+    "recommendations": [{"title": "Enable BBR", "commands": ["sysctl -w net.ipv4.tcp_congestion_control=bbr"]}]
   },
-  "ai_context": {"prompt": "You are a Linux systems performance expert..."}
+  "ai_context": {"prompt": "You are a Linux performance engineer. Analyze this report..."}
 }
 ```
 
-## Example Report
+---
 
-See **[doc/example_report.md](doc/example_report.md)** for a realistic production example — a server with health score 32/100 where a message broker fsync storm on HDD causes cascading I/O saturation across all co-located containers. Includes the full BCC tool output (biolatency, ext4slower, runqlat, cachestat), root cause chain diagram, and prioritized remediation steps.
+## BCC Tools (67)
 
-## AI Agent Usage Guide
+~84% coverage of Brendan Gregg's [BPF observability diagram](https://www.brendangregg.com/BPF/bcc-tracing-tools.png).
 
-melisai is designed to be operated by AI agents (Claude Code, etc.) for automated performance analysis. Here's the recommended workflow:
+| Subsystem | Tools |
+|-----------|-------|
+| **CPU** (10) | runqlat, runqlen, cpudist, hardirqs, softirqs, runqslower, cpufreq, cpuunclaimed, llcstat, funccount |
+| **Disk** (20) | biolatency, biosnoop, biotop, bitesize, ext4slower, ext4dist, fileslower, filelife, mountsnoop, btrfsslower, btrfsdist, xfsslower, xfsdist, nfsslower, nfsdist, zfsslower, zfsdist, mdflush, scsilatency, nvmelatency, vfsstat |
+| **Memory** (7) | cachestat, oomkill, drsnoop, shmsnoop, numamove, memleak, slabratetop |
+| **Network** (14) | tcpconnlat, tcpretrans, tcprtt, tcpdrop, tcpstates, tcpconnect, tcpaccept, tcplife, udpconnect, sofdsnoop, sockstat, skbdrop, tcpsynbl, gethostlatency |
+| **Process** (9) | execsnoop, opensnoop, killsnoop, threadsnoop, syncsnoop, exitsnoop, statsnoop, capable, syscount |
+| **Stacks** (6) | profile, offcputime, wakeuptime, offwaketime, biostacks, stackcount |
 
-### Step 1: Deploy and Install
+24 of these tools support `--pid` filtering for per-process analysis.
 
-```bash
-# Build on your dev machine
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o melisai ./cmd/melisai/
+---
 
-# Deploy to target server
-scp melisai root@<server>:/usr/local/bin/melisai
+## Anomaly Detection
 
-# Install BCC tools (first time only)
-ssh root@<server> "melisai install"
+20 threshold rules based on Gregg's recommended values:
 
-# Verify
-ssh root@<server> "melisai capabilities"
+| Metric | Warning | Critical | Source |
+|--------|---------|----------|--------|
+| cpu_utilization | 80% | 95% | /proc/stat |
+| cpu_iowait | 10% | 30% | /proc/stat |
+| load_average | 2x CPUs | 4x CPUs | /proc/loadavg |
+| memory_utilization | 85% | 95% | /proc/meminfo |
+| swap_usage | 10% | 50% | /proc/meminfo |
+| disk_utilization | 70% | 90% | /proc/diskstats |
+| disk_avg_latency | 5ms | 50ms | /proc/diskstats |
+| tcp_retransmits | 10/s | 50/s | /proc/net/snmp |
+| tcp_timewait | 5k | 20k | ss |
+| runqlat_p99 | 10ms | 50ms | BCC histogram |
+| biolatency_p99_ssd | 5ms | 25ms | BCC histogram |
+| biolatency_p99_hdd | 50ms | 200ms | BCC histogram |
+| cpu_throttling | 100 | 1000 periods | cgroup cpu.stat |
+| ... and 7 more (PSI, cache miss, DNS, container memory, network errors) | | | |
+
+---
+
+## Architecture
+
+```
+cmd/melisai/           CLI (cobra) + MCP subcommand
+internal/
+  ├── collector/       7 Tier 1 collectors + BCC adapter
+  ├── executor/        BCC runner, security, 67 parsers, registry
+  ├── ebpf/            Native eBPF loader (cilium/ebpf, CO-RE)
+  ├── mcp/             MCP server (4 tools, stdio JSON-RPC)
+  ├── model/           Types, USE metrics, anomalies, health score
+  ├── observer/        PID tracker, overhead measurement
+  ├── orchestrator/    Two-phase execution, signal handling, profiles
+  ├── output/          JSON, FlameGraph SVG, AI prompt generator
+  ├── diff/            Report comparison engine
+  └── installer/       Distro detection, package installation
 ```
 
-### Step 2: Collect Data
+**Security**: all BCC binaries are verified (root-owned, not world-writable, in allowed paths). No shell execution. Environment sanitized. Output capped at 50MB per tool.
 
-```bash
-# For a quick health check
-ssh root@<server> "melisai collect --profile quick --ai-prompt -o /tmp/report.json"
+---
 
-# For full analysis
-ssh root@<server> "melisai collect --profile standard --ai-prompt -o /tmp/report.json"
+## Requirements
 
-# For per-application analysis (24 BCC tools trace only the target PID)
-ssh root@<server> "melisai collect --profile standard --pid $(pgrep myapp) --ai-prompt -o /tmp/app-report.json"
+| | Minimum | Notes |
+|---|---|---|
+| **Build** | Go 1.23+ | Cross-compile: `GOOS=linux GOARCH=amd64` |
+| **Tier 1** | Any Linux kernel | No root needed |
+| **Tier 2** | bcc-tools installed | `sudo melisai install` handles this |
+| **Tier 3** | Kernel ≥ 5.8 with BTF | Falls back to Tier 2 automatically |
 
-# For container/service analysis
-ssh root@<server> "melisai collect --profile standard --cgroup /sys/fs/cgroup/system.slice/nginx.service -o /tmp/nginx-report.json"
+### Tested distros
 
-# Download report
-scp root@<server>:/tmp/report.json ./report.json
-```
+| Distro | Verified |
+|--------|----------|
+| Ubuntu 24.04 | Full validation (20 CPUs, 62 GiB, 8 workload tests) |
+| Ubuntu 22.04 | Docker integration test |
+| Debian 12 | Docker integration test |
+| Fedora 39 | Docker integration test |
+| CentOS Stream 9 | Docker integration test |
 
-### Step 3: Analyze the JSON
-
-The report contains everything needed for analysis:
-
-- `summary.health_score` -- quick 0-100 health indicator
-- `summary.anomalies[]` -- detected issues with severity
-- `summary.recommendations[]` -- actionable sysctl commands
-- `categories.cpu[].data` -- CPU utilization, load average, PSI
-- `categories.cpu[].histograms[]` -- scheduler latency distribution (P50/P90/P99)
-- `categories.disk[].histograms[]` -- I/O latency distribution
-- `categories.network[].events[]` -- TCP connection events, retransmissions
-- `categories.stacktrace[].stacks[]` -- folded stack traces for flamegraphs
-- `ai_context.prompt` -- ready-to-use prompt for AI analysis
-
-### Step 4: Compare Over Time
-
-```bash
-# Take baseline
-ssh root@<server> "melisai collect --profile standard -o /tmp/baseline.json"
-
-# ... make changes ...
-
-# Take current
-ssh root@<server> "melisai collect --profile standard -o /tmp/current.json"
-
-# Compare
-ssh root@<server> "melisai diff /tmp/baseline.json /tmp/current.json -o /tmp/diff.json"
-```
-
-### Key Patterns for AI Agents
-
-1. **Empty histogram data is normal** -- tools like `biolatency` return empty results when there's no I/O. This is not an error.
-2. **BCC tools use `-bpfcc` suffix** on Ubuntu/Debian (e.g., `/usr/sbin/runqlat-bpfcc`). melisai handles this automatically.
-3. **Tools that don't accept duration** (e.g., `oomkill`) are killed after `duration + 5s` via context cancellation.
-4. **Tier 3 (native eBPF)** requires compiled `.o` files. Currently only `tcpretrans` has a Tier 3 implementation. If the `.o` file is missing, it falls back to BCC.
-5. **The health score** is a weighted composite: CPU (1.5×), Memory (1.5×), Disk (1.0×), Network (1.0×), Container (1.2×). Score < 50 = critical, < 70 = warning.
-6. **Two-phase collection** -- Tier 1 (procfs) runs first on a clean system, then Tier 2/3 (BCC/eBPF). This ensures CPU/memory/disk/network baselines are uncontaminated by BPF overhead.
-7. **PID targeting** -- `--pid PID` injects `-p PID` into 24 BCC tools that support it. Tier 1 metrics remain system-wide for context. The AI prompt explains the scoping.
-8. **Delta-based metrics** -- network errors and TCP retransmissions use per-second rates (not cumulative counters). Memory errors are not reported (cumulative faults since boot are not actionable).
-
-### Troubleshooting
-
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| `tool "X" not found in allowed paths` | BCC tool not installed | Run `melisai install` |
-| `no histogram buckets found` (in logs) | No events during collection | Normal -- tool returns empty result |
-| `binary "X" is not owned by root` | File permissions issue | `chown root:root /usr/sbin/X-bpfcc` |
-| Collection hangs | A BCC tool is stuck | Each tool has a `duration + 5s` timeout |
-| `exit status 1` from BCC tool | Tool crashed or missing kernel support | Check `dmesg` for BPF errors |
+---
 
 ## Development
 
 ```bash
-# Run all tests
-go test ./... -v -count=1
+# Run all 258 tests
+go test ./... -v
 
-# Verify tool count
-go test ./internal/executor/ -run TestRegistryToolCount -v
+# With race detector
+go test ./... -race
 
-# Test all parsers against fixtures
-go test ./internal/executor/ -run TestAllToolsParseFixtures -v
+# Lint
+make lint
 
-# Cross-compile for Linux
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o melisai ./cmd/melisai/
+# Cross-compile
+make build    # or: GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o melisai ./cmd/melisai/
 
-# Vet
-go vet ./...
+# Validation tests (Linux + root + stress-ng)
+make test-validation
 ```
 
-## Requirements
+---
 
-- **Build**: Go 1.23+
-- **Run (Tier 1)**: Linux (any kernel)
-- **Run (Tier 2)**: bcc-tools (`apt install bpfcc-tools python3-bpfcc` on Ubuntu)
-- **Run (Tier 3)**: Kernel >= 5.8 with BTF/CO-RE support
+## Troubleshooting
 
-## Supported Distributions
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| `tool "X" not found in allowed paths` | BCC tool not installed | `sudo melisai install` |
+| `binary "X" is not owned by root` | Permissions | `chown root:root /usr/sbin/X-bpfcc` |
+| Empty histogram data | No events during collection window | Normal -- not an error |
+| `exit status 1` from BCC tool | Missing kernel support | Check `dmesg` for BPF errors |
 
-| Distro | Package Manager | Tested |
-|--------|----------------|--------|
-| Ubuntu 22.04/24.04 | apt | Yes (24.04 verified) |
-| Debian 11/12 | apt | Expected |
-| CentOS/RHEL 8/9 | yum | Expected |
-| Fedora 38+ | dnf | Expected |
-| Arch Linux | pacman | Expected |
+---
 
 ## License
 
