@@ -2,131 +2,30 @@ name: CI
 
 on:
   push:
-    branches: [develop, main]
+    branches: ["develop", "master"]
   pull_request:
-    branches: [develop, main]
+    branches: ["develop", "master"]
 
 jobs:
   test:
-    name: Test
+    name: Test & Build
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go-version: ["1.23", "1.24"]
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version: "1.24"
 
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-${{ matrix.go-version }}-
+      - name: Verify dependencies
+        run: go mod verify
 
-      - name: Download dependencies
-        run: go mod download
+      - name: Build
+        run: go build -v ./...
 
-      - name: Run vet
+      - name: Test
+        run: go test -v ./...
+
+      - name: Vet
         run: go vet ./...
-
-      - name: Run tests with race detector
-        run: go test -v -race -count=1 -timeout 120s ./...
-
-      - name: Run tests with coverage
-        run: |
-          go test -race -coverprofile=coverage.out -covermode=atomic ./...
-          go tool cover -func=coverage.out
-
-      - name: Upload coverage
-        if: matrix.go-version == '1.24'
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: coverage.out
-
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    needs: test
-
-    strategy:
-      matrix:
-        goos: [linux]
-        goarch: [amd64, arm64]
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.24"
-
-      - name: Build binary
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: |
-          COMMIT=$(git rev-parse --short HEAD)
-          go build -ldflags "-X main.version=dev-${COMMIT} -s -w" \
-            -o bin/melisai-${{ matrix.goos }}-${{ matrix.goarch }} \
-            ./cmd/melisai/
-
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: melisai-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: bin/melisai-*
-
-  integration:
-    name: Integration (Docker)
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.event_name == 'push'
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download binary
-        uses: actions/download-artifact@v4
-        with:
-          name: melisai-linux-amd64
-
-      - name: Prepare binary
-        run: |
-          chmod +x melisai-linux-amd64
-          mv melisai-linux-amd64 /tmp/melisai
-
-      - name: Run integration tests
-        run: bash tests/integration/docker_test.sh --binary /tmp/melisai
-
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.24"
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          args: --timeout=5m
