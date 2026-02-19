@@ -32,3 +32,4 @@ context/
 .claude/
 collector.test
 *.test
+docs/RELEASE_WORKFLOW.md
