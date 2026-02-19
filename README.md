@@ -28,6 +28,43 @@ melisai implements Brendan Gregg's **USE Method** (Utilization, Saturation, Erro
 - **Report diff** -- regression/improvement detection with significance classification
 - **Installer** -- auto-detects distro (Ubuntu/Debian/CentOS/Fedora/Arch) and installs BPF tools
 
+## MCP Server (AI Agent Integration)
+
+melisai includes a built-in [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server, allowing AI agents (Claude Desktop, Cursor, Zed, etc.) to interactively diagnose system performance over stdio.
+
+```bash
+# Start MCP server (stdio JSON-RPC)
+melisai mcp
+```
+
+**Exposed tools:**
+
+| Tool | Description | Args |
+|------|-------------|------|
+| `get_health` | Quick health check (~1s, Tier 1 only, no root) | — |
+| `collect_metrics` | Full performance profile (Tier 1 + BCC/eBPF) | `profile` (quick/standard/deep), `focus`, `pid` |
+| `explain_anomaly` | Root causes + recommendations for an anomaly | `anomaly_id` (required) |
+| `list_anomalies` | List all 23 detectable anomaly metric IDs | — |
+
+**Claude Desktop / Cursor configuration:**
+
+```json
+{
+  "mcpServers": {
+    "melisai": {
+      "command": "ssh",
+      "args": ["root@your-server", "/usr/local/bin/melisai", "mcp"]
+    }
+  }
+}
+```
+
+**Typical AI agent workflow:**
+1. `get_health` → quick 0-100 score + anomalies
+2. `explain_anomaly` → understand what's wrong
+3. `collect_metrics` → deep dive with full BCC/eBPF tracing
+4. `list_anomalies` → discover all detectable issues
+
 ## Quick Start
 
 ```bash
@@ -99,11 +136,12 @@ sudo melisai install --dry-run
 ## Architecture
 
 ```
-cmd/melisai/          CLI entry point (cobra)
+cmd/melisai/          CLI entry point (cobra) + MCP subcommand
 internal/
   |-- collector/      Tier 1 procfs/sysfs collectors (7) + BCC adapter (PID injection)
   |-- executor/       BCC tool runner + security + parsers + registry (67 tools)
   |-- ebpf/           BTF detection, CO-RE loader, tier decision
+  |-- mcp/            MCP server + tool handlers (get_health, collect_metrics, explain/list)
   |-- model/          Data types, USE metrics, anomaly detection (20 rules), health score
   |-- observer/       PID tracker, observer-effect measurement
   |-- orchestrator/   Two-phase execution, signal handling, profiles
