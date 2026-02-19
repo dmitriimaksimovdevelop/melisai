@@ -163,7 +163,7 @@ Tier 3: Native eBPF (cilium/ebpf) — zero dependencies (needs root + kernel ≥
 	}
 	diffCmd.Flags().StringVarP(&diffOutput, "output", "o", "-", "Output diff file path")
 
-	rootCmd.AddCommand(collectCmd, installCmd, capabilitiesCmd, diffCmd)
+	rootCmd.AddCommand(collectCmd, installCmd, capabilitiesCmd, diffCmd, mcpCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
