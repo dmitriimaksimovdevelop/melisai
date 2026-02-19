@@ -1,5 +1,5 @@
 
-.PHONY: all build clean generate test test-integration test-validation
+.PHONY: all build clean generate test test-integration test-validation lint check
 
 all: build
 
@@ -15,7 +15,14 @@ generate:
 		-c internal/ebpf/c/tcpretrans.bpf.c -o internal/ebpf/bpf/tcpretrans.o
 
 test:
-	go test ./...
+	go test -race -count=1 -timeout 120s ./...
+
+lint:
+	@which golangci-lint > /dev/null 2>&1 || { echo "Installing golangci-lint..."; go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; }
+	golangci-lint run --timeout=5m
+
+check: test lint
+	@echo "All checks passed."
 
 test-integration:
 	bash tests/integration/docker_test.sh
