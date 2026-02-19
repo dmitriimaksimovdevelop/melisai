@@ -130,14 +130,14 @@ func GenerateRecommendations(report *Report) []Recommendation {
 					})
 					priority++
 				}
-				if net.TCP != nil && net.TCP.RetransSegs > 100 {
+				if net.TCP != nil && net.TCP.RetransRate > 1.0 {
 					recs = append(recs, Recommendation{
 						Priority:       priority,
 						Category:       "network",
 						Title:          "Investigate TCP retransmissions",
 						Commands:       []string{"melisai collect --profile deep --focus network"},
 						ExpectedImpact: "Identify network path issues causing packet loss",
-						Evidence:       formatEvidence("retrans_segs=%d", net.TCP.RetransSegs),
+						Evidence:       formatEvidence("retrans_rate=%.1f/s", net.TCP.RetransRate),
 						Source:         "Brendan Gregg, Systems Performance ch.10",
 					})
 					priority++

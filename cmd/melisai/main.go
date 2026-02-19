@@ -65,6 +65,7 @@ Tier 3: Native eBPF (cilium/ebpf) — zero dependencies (needs root + kernel ≥
 			cfg := collector.DefaultConfig()
 			cfg.Profile = collectProfile
 			cfg.Quiet = collectQuiet
+			cfg.Verbose = collectVerbose
 
 			if collectFocus != "" {
 				cfg.Focus = strings.Split(collectFocus, ",")

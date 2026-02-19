@@ -60,6 +60,66 @@ func TestRegistryCategories(t *testing.T) {
 	}
 }
 
+// TestPIDFlagConsistency verifies that tools with PIDFlag set have it as "-p".
+func TestPIDFlagConsistency(t *testing.T) {
+	toolsWithPID := 0
+	for name, spec := range Registry {
+		if spec.PIDFlag != "" {
+			toolsWithPID++
+			if spec.PIDFlag != "-p" {
+				t.Errorf("tool %q has PIDFlag=%q, expected '-p'", name, spec.PIDFlag)
+			}
+		}
+	}
+	// We expect at least 20 tools to support PID filtering
+	if toolsWithPID < 20 {
+		t.Errorf("only %d tools have PIDFlag set, expected at least 20", toolsWithPID)
+	}
+	t.Logf("%d/%d tools support -p PID filtering", toolsWithPID, len(Registry))
+}
+
+// TestPIDFlagToolsList verifies specific known tools have PIDFlag set.
+func TestPIDFlagToolsList(t *testing.T) {
+	expectedWithPID := []string{
+		"runqlat", "cpudist", "profile", "offcputime",
+		"opensnoop", "tcpconnlat", "tcpconnect", "tcpaccept",
+		"ext4slower", "fileslower", "killsnoop", "capable",
+		"runqslower", "funccount", "memleak", "syscount",
+		"filelife", "biotop", "ext4dist", "xfsdist",
+		"stackcount", "tcplife", "statsnoop",
+	}
+	for _, name := range expectedWithPID {
+		spec, ok := Registry[name]
+		if !ok {
+			t.Errorf("tool %q not in registry", name)
+			continue
+		}
+		if spec.PIDFlag == "" {
+			t.Errorf("tool %q should have PIDFlag set but it's empty", name)
+		}
+	}
+}
+
+// TestPIDFlagNotOnEventTools verifies that event-only tools
+// without PID support don't have PIDFlag set.
+func TestPIDFlagNotOnEventTools(t *testing.T) {
+	expectedWithoutPID := []string{
+		"tcpretrans", "tcpdrop", "oomkill",
+		"runqlen", "hardirqs", "softirqs",
+		"cachestat", "biolatency",
+	}
+	for _, name := range expectedWithoutPID {
+		spec, ok := Registry[name]
+		if !ok {
+			t.Errorf("tool %q not in registry", name)
+			continue
+		}
+		if spec.PIDFlag != "" {
+			t.Errorf("tool %q should NOT have PIDFlag but has %q", name, spec.PIDFlag)
+		}
+	}
+}
+
 // TestAllToolsParseFixtures verifies that every tool with a testdata fixture
 // can parse it without error and produce a non-nil result.
 func TestAllToolsParseFixtures(t *testing.T) {

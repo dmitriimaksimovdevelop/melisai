@@ -394,6 +394,182 @@ func TestProcessCollector_StateCounting(t *testing.T) {
 	}
 }
 
+// --- --pid and --cgroup filter tests ---
+
+// TestProcessCollector_PIDFilter verifies that --pid filters the process list
+// to only the target PIDs, while still counting all processes in totals.
+func TestProcessCollector_PIDFilter(t *testing.T) {
+	root := t.TempDir()
+	writeMeminfo(t, root, 8192000)
+
+	writeProcStat(t, root, 100, "nginx", "S", 500, 100, 4, 5000)
+	writeFDs(t, root, 100, 6)
+	writeProcStat(t, root, 200, "postgres", "S", 1500, 200, 8, 20000)
+	writeFDs(t, root, 200, 20)
+	writeProcStat(t, root, 300, "java", "R", 8000, 1000, 16, 50000)
+	writeFDs(t, root, 300, 15)
+
+	c := NewProcessCollector(root)
+	cfg := CollectConfig{
+		SampleInterval: 1 * time.Millisecond,
+		TargetPIDs:     []int{200}, // Only show PID 200
+	}
+
+	result, err := c.Collect(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Collect() error: %v", err)
+	}
+
+	data, ok := result.Data.(*model.ProcessData)
+	if !ok {
+		t.Fatalf("unexpected data type: %T", result.Data)
+	}
+
+	// Total should count ALL processes (not just filtered ones)
+	if data.Total != 3 {
+		t.Errorf("Total = %d, want 3 (all procs counted)", data.Total)
+	}
+
+	// But TopByCPU and TopByMem should only contain PID 200
+	if len(data.TopByCPU) != 1 {
+		t.Errorf("TopByCPU len = %d, want 1 (only PID 200)", len(data.TopByCPU))
+	} else if data.TopByCPU[0].PID != 200 {
+		t.Errorf("TopByCPU[0].PID = %d, want 200", data.TopByCPU[0].PID)
+	}
+
+	if len(data.TopByMem) != 1 {
+		t.Errorf("TopByMem len = %d, want 1 (only PID 200)", len(data.TopByMem))
+	} else if data.TopByMem[0].PID != 200 {
+		t.Errorf("TopByMem[0].PID = %d, want 200", data.TopByMem[0].PID)
+	}
+}
+
+// TestProcessCollector_MultiplePIDFilter verifies that --pid with multiple PIDs works.
+func TestProcessCollector_MultiplePIDFilter(t *testing.T) {
+	root := t.TempDir()
+	writeMeminfo(t, root, 8192000)
+
+	writeProcStat(t, root, 100, "nginx", "S", 500, 100, 4, 5000)
+	writeFDs(t, root, 100, 6)
+	writeProcStat(t, root, 200, "postgres", "S", 1500, 200, 8, 20000)
+	writeFDs(t, root, 200, 20)
+	writeProcStat(t, root, 300, "java", "R", 8000, 1000, 16, 50000)
+	writeFDs(t, root, 300, 15)
+
+	c := NewProcessCollector(root)
+	cfg := CollectConfig{
+		SampleInterval: 1 * time.Millisecond,
+		TargetPIDs:     []int{100, 300},
+	}
+
+	result, err := c.Collect(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Collect() error: %v", err)
+	}
+
+	data := result.Data.(*model.ProcessData)
+
+	// Should have only PIDs 100 and 300 in the lists
+	pids := map[int]bool{}
+	for _, p := range data.TopByCPU {
+		pids[p.PID] = true
+	}
+
+	if len(pids) != 2 {
+		t.Errorf("TopByCPU should have 2 PIDs, got %d", len(pids))
+	}
+	if !pids[100] || !pids[300] {
+		t.Errorf("TopByCPU should contain PIDs 100 and 300, got %v", pids)
+	}
+	if pids[200] {
+		t.Error("TopByCPU should NOT contain PID 200")
+	}
+}
+
+// TestProcessCollector_CgroupFilter verifies that --cgroup filters processes
+// to only those belonging to the target cgroup.
+func TestProcessCollector_CgroupFilter(t *testing.T) {
+	root := t.TempDir()
+	writeMeminfo(t, root, 8192000)
+
+	// Create 3 processes with different cgroup memberships
+	writeProcStat(t, root, 100, "app1", "S", 500, 100, 4, 5000)
+	writeFDs(t, root, 100, 6)
+	writeCgroup(t, root, 100, "0::/docker/abc123\n")
+
+	writeProcStat(t, root, 200, "app2", "S", 1500, 200, 8, 20000)
+	writeFDs(t, root, 200, 20)
+	writeCgroup(t, root, 200, "0::/docker/def456\n")
+
+	writeProcStat(t, root, 300, "host_proc", "R", 8000, 1000, 16, 50000)
+	writeFDs(t, root, 300, 15)
+	writeCgroup(t, root, 300, "0::/\n")
+
+	c := NewProcessCollector(root)
+	cfg := CollectConfig{
+		SampleInterval: 1 * time.Millisecond,
+		TargetCgroups:  []string{"/docker/abc123"},
+	}
+
+	result, err := c.Collect(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Collect() error: %v", err)
+	}
+
+	data := result.Data.(*model.ProcessData)
+
+	// Total counts all processes
+	if data.Total != 3 {
+		t.Errorf("Total = %d, want 3", data.Total)
+	}
+
+	// But only PID 100 should appear in the lists (belongs to docker/abc123)
+	if len(data.TopByCPU) != 1 {
+		t.Errorf("TopByCPU len = %d, want 1 (only PID 100)", len(data.TopByCPU))
+	} else if data.TopByCPU[0].PID != 100 {
+		t.Errorf("TopByCPU[0].PID = %d, want 100", data.TopByCPU[0].PID)
+	}
+}
+
+// TestProcessCollector_NoPIDFilter verifies that without --pid, all processes are shown.
+func TestProcessCollector_NoPIDFilter(t *testing.T) {
+	root := t.TempDir()
+	writeMeminfo(t, root, 8192000)
+
+	writeProcStat(t, root, 100, "nginx", "S", 500, 100, 4, 5000)
+	writeFDs(t, root, 100, 6)
+	writeProcStat(t, root, 200, "postgres", "S", 1500, 200, 8, 20000)
+	writeFDs(t, root, 200, 20)
+
+	c := NewProcessCollector(root)
+	cfg := CollectConfig{
+		SampleInterval: 1 * time.Millisecond,
+		// No TargetPIDs — all processes should be included
+	}
+
+	result, err := c.Collect(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Collect() error: %v", err)
+	}
+
+	data := result.Data.(*model.ProcessData)
+	if len(data.TopByCPU) != 2 {
+		t.Errorf("TopByCPU len = %d, want 2 (no filter)", len(data.TopByCPU))
+	}
+}
+
+// writeCgroup creates a /proc/[pid]/cgroup file with the given content.
+func writeCgroup(t *testing.T, root string, pid int, content string) {
+	t.Helper()
+	dir := filepath.Join(root, fmt.Sprintf("%d", pid))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "cgroup"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestProcessCollector_WithTestdata exercises the collector against the
 // committed testdata/proc/ fixtures to ensure the integration works end-to-end
 // with realistic proc files.

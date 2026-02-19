@@ -76,6 +76,9 @@ type CollectConfig struct {
 	// Quiet suppresses progress output.
 	Quiet bool
 
+	// Verbose enables debug-level logging.
+	Verbose bool
+
 	// ProcRoot is the path to procfs mount (default "/proc").
 	// Can be overridden for testing.
 	ProcRoot string

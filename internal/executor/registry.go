@@ -14,6 +14,7 @@ type ToolSpec struct {
 	Category   string                                  // "disk"
 	NeedsRoot  bool                                    // true for most BCC tools
 	OutputType OutputType                              // determines parser
+	PIDFlag    string                                  // "-p" if tool supports PID filtering, empty otherwise
 	BuildArgs  func(duration time.Duration) []string   // returns invocation args
 	Parser     func(raw string) (*model.Result, error) // parses stdout to Result
 }
@@ -35,7 +36,7 @@ const (
 var Registry = map[string]*ToolSpec{
 	"runqlat": {
 		Name: "runqlat", Binary: "runqlat", Category: "cpu",
-		NeedsRoot: true, OutputType: HISTOGRAM,
+		NeedsRoot: true, OutputType: HISTOGRAM, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{"-m", formatDuration(d), "1"}
 		},
@@ -53,7 +54,7 @@ var Registry = map[string]*ToolSpec{
 	},
 	"cpudist": {
 		Name: "cpudist", Binary: "cpudist", Category: "cpu",
-		NeedsRoot: true, OutputType: HISTOGRAM,
+		NeedsRoot: true, OutputType: HISTOGRAM, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{formatDuration(d), "1"}
 		},
@@ -79,7 +80,7 @@ var Registry = map[string]*ToolSpec{
 	},
 	"ext4slower": {
 		Name: "ext4slower", Binary: "ext4slower", Category: "disk",
-		NeedsRoot: true, OutputType: TABULAR,
+		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{"1", formatDuration(d)}
 		},
@@ -91,7 +92,7 @@ var Registry = map[string]*ToolSpec{
 	},
 	"fileslower": {
 		Name: "fileslower", Binary: "fileslower", Category: "disk",
-		NeedsRoot: true, OutputType: TABULAR,
+		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{"1", formatDuration(d)}
 		},
@@ -112,7 +113,7 @@ var Registry = map[string]*ToolSpec{
 	},
 	"tcpconnlat": {
 		Name: "tcpconnlat", Binary: "tcpconnlat", Category: "network",
-		NeedsRoot: true, OutputType: TABULAR,
+		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{formatDuration(d)}
 		},
@@ -136,7 +137,7 @@ var Registry = map[string]*ToolSpec{
 	},
 	"gethostlatency": {
 		Name: "gethostlatency", Binary: "gethostlatency", Category: "network",
-		NeedsRoot: true, OutputType: TABULAR,
+		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{formatDuration(d)}
 		},
@@ -164,7 +165,7 @@ var Registry = map[string]*ToolSpec{
 	},
 	"profile": {
 		Name: "profile", Binary: "profile", Category: "stacktrace",
-		NeedsRoot: true, OutputType: FOLDED,
+		NeedsRoot: true, OutputType: FOLDED, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{"-af", formatDuration(d)}
 		},
@@ -172,7 +173,7 @@ var Registry = map[string]*ToolSpec{
 	},
 	"offcputime": {
 		Name: "offcputime", Binary: "offcputime", Category: "stacktrace",
-		NeedsRoot: true, OutputType: FOLDED,
+		NeedsRoot: true, OutputType: FOLDED, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{"-fK", formatDuration(d)}
 		},
@@ -220,7 +221,7 @@ var Registry = map[string]*ToolSpec{
 	// Applications/Process category
 	"opensnoop": {
 		Name: "opensnoop", Binary: "opensnoop", Category: "process",
-		NeedsRoot: true, OutputType: TABULAR,
+		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{"-d", formatDuration(d)}
 		},
@@ -231,7 +232,7 @@ var Registry = map[string]*ToolSpec{
 	},
 	"killsnoop": {
 		Name: "killsnoop", Binary: "killsnoop", Category: "process",
-		NeedsRoot: true, OutputType: TABULAR,
+		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{formatDuration(d)}
 		},
@@ -275,7 +276,7 @@ var Registry = map[string]*ToolSpec{
 	},
 	"statsnoop": {
 		Name: "statsnoop", Binary: "statsnoop", Category: "process",
-		NeedsRoot: true, OutputType: TABULAR,
+		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{"-d", formatDuration(d)}
 		},
@@ -286,7 +287,7 @@ var Registry = map[string]*ToolSpec{
 	},
 	"capable": {
 		Name: "capable", Binary: "capable", Category: "process",
-		NeedsRoot: true, OutputType: TABULAR,
+		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{formatDuration(d)}
 		},
@@ -299,7 +300,7 @@ var Registry = map[string]*ToolSpec{
 	// VFS/Filesystem category
 	"filelife": {
 		Name: "filelife", Binary: "filelife", Category: "disk",
-		NeedsRoot: true, OutputType: TABULAR,
+		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{formatDuration(d)}
 		},
@@ -380,7 +381,7 @@ var Registry = map[string]*ToolSpec{
 	// Scheduler/CPU
 	"runqslower": {
 		Name: "runqslower", Binary: "runqslower", Category: "cpu",
-		NeedsRoot: true, OutputType: TABULAR,
+		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{"10000", formatDuration(d)}
 		},
@@ -415,7 +416,7 @@ var Registry = map[string]*ToolSpec{
 	// Network
 	"tcpconnect": {
 		Name: "tcpconnect", Binary: "tcpconnect", Category: "network",
-		NeedsRoot: true, OutputType: TABULAR,
+		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{formatDuration(d)}
 		},
@@ -426,7 +427,7 @@ var Registry = map[string]*ToolSpec{
 	},
 	"tcpaccept": {
 		Name: "tcpaccept", Binary: "tcpaccept", Category: "network",
-		NeedsRoot: true, OutputType: TABULAR,
+		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{formatDuration(d)}
 		},
@@ -437,7 +438,7 @@ var Registry = map[string]*ToolSpec{
 	},
 	"tcplife": {
 		Name: "tcplife", Binary: "tcplife", Category: "network",
-		NeedsRoot: true, OutputType: TABULAR,
+		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{formatDuration(d)}
 		},
@@ -555,7 +556,7 @@ var Registry = map[string]*ToolSpec{
 
 	"ext4dist": {
 		Name: "ext4dist", Binary: "ext4dist", Category: "disk",
-		NeedsRoot: true, OutputType: HISTOGRAM,
+		NeedsRoot: true, OutputType: HISTOGRAM, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{formatDuration(d), "1"}
 		},
@@ -575,7 +576,7 @@ var Registry = map[string]*ToolSpec{
 	},
 	"xfsdist": {
 		Name: "xfsdist", Binary: "xfsdist", Category: "disk",
-		NeedsRoot: true, OutputType: HISTOGRAM,
+		NeedsRoot: true, OutputType: HISTOGRAM, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{formatDuration(d), "1"}
 		},
@@ -692,7 +693,7 @@ var Registry = map[string]*ToolSpec{
 	},
 	"stackcount": {
 		Name: "stackcount", Binary: "stackcount", Category: "stacktrace",
-		NeedsRoot: true, OutputType: FOLDED,
+		NeedsRoot: true, OutputType: FOLDED, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{"-fK", formatDuration(d)}
 		},
@@ -713,7 +714,7 @@ var Registry = map[string]*ToolSpec{
 
 	"biotop": {
 		Name: "biotop", Binary: "biotop", Category: "disk",
-		NeedsRoot: true, OutputType: PERIODIC,
+		NeedsRoot: true, OutputType: PERIODIC, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{formatDuration(d), "1"}
 		},
@@ -746,7 +747,7 @@ var Registry = map[string]*ToolSpec{
 	},
 	"syscount": {
 		Name: "syscount", Binary: "syscount", Category: "process",
-		NeedsRoot: true, OutputType: TABULAR,
+		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{"-d", formatDuration(d)}
 		},
@@ -760,7 +761,7 @@ var Registry = map[string]*ToolSpec{
 
 	"funccount": {
 		Name: "funccount", Binary: "funccount", Category: "cpu",
-		NeedsRoot: true, OutputType: TABULAR,
+		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{"-d", formatDuration(d), "tcp_*"}
 		},
@@ -771,7 +772,7 @@ var Registry = map[string]*ToolSpec{
 	},
 	"memleak": {
 		Name: "memleak", Binary: "memleak", Category: "memory",
-		NeedsRoot: true, OutputType: TABULAR,
+		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
 			return []string{"-a", formatDuration(d)}
 		},

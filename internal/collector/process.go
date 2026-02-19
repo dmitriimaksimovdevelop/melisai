@@ -61,6 +61,16 @@ func (c *ProcessCollector) Collect(ctx context.Context, cfg CollectConfig) (*mod
 	var totalProcs, running, sleeping, zombie int
 	var excludedPIDs []int
 
+	// Build target PID set for --pid filtering
+	targetPIDSet := make(map[int]bool)
+	for _, p := range cfg.TargetPIDs {
+		targetPIDSet[p] = true
+	}
+	hasTargetPIDs := len(targetPIDSet) > 0
+
+	// Build target cgroup set for --cgroup filtering
+	hasTargetCgroups := len(cfg.TargetCgroups) > 0
+
 	for pid, p2 := range pids2 {
 		totalProcs++
 		switch p2.state {
@@ -98,6 +108,16 @@ func (c *ProcessCollector) Collect(ctx context.Context, cfg CollectConfig) (*mod
 		// Exclude melisai's own processes from top lists (but keep in totals)
 		if cfg.PIDTracker != nil && cfg.PIDTracker.IsOwnPID(pid) {
 			excludedPIDs = append(excludedPIDs, pid)
+			continue
+		}
+
+		// --pid filter: only include target PIDs in process list
+		if hasTargetPIDs && !targetPIDSet[pid] {
+			continue
+		}
+
+		// --cgroup filter: only include processes in target cgroups
+		if hasTargetCgroups && !c.pidInCgroups(pid, cfg.TargetCgroups) {
 			continue
 		}
 
@@ -215,6 +235,23 @@ func (c *ProcessCollector) readProcPID(pid int) (procStat, error) {
 	}
 
 	return ps, nil
+}
+
+// pidInCgroups checks whether a PID belongs to any of the target cgroup paths
+// by reading /proc/[pid]/cgroup and matching path substrings.
+func (c *ProcessCollector) pidInCgroups(pid int, targets []string) bool {
+	cgroupPath := filepath.Join(c.procRoot, strconv.Itoa(pid), "cgroup")
+	data, err := os.ReadFile(cgroupPath)
+	if err != nil {
+		return false
+	}
+	content := string(data)
+	for _, target := range targets {
+		if strings.Contains(content, target) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *ProcessCollector) getTotalMemory() int64 {

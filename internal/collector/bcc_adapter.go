@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/dmitriimaksimovdevelop/melisai/internal/executor"
@@ -75,6 +76,12 @@ func (c *BCCCollector) Collect(ctx context.Context, cfg CollectConfig) (*model.R
 	// Build arguments
 	args := spec.BuildArgs(duration)
 
+	// Inject PID filter for tools that support it
+	if spec.PIDFlag != "" && len(cfg.TargetPIDs) > 0 {
+		pidArgs := []string{spec.PIDFlag, strconv.Itoa(cfg.TargetPIDs[0])}
+		args = append(pidArgs, args...)
+	}
+
 	// Run executor
 	raw, err := c.executor.Run(toolCtx, c.toolName, args, duration)
 	if err != nil {
@@ -118,6 +125,12 @@ func (c *BCCCollector) Collect(ctx context.Context, cfg CollectConfig) (*model.R
 			filtered = append(filtered, ev)
 		}
 		result.Events = filtered
+	}
+
+	// Apply max events cap from config (overrides hardcoded parser limits)
+	if cfg.MaxEventsPerCollector > 0 && len(result.Events) > cfg.MaxEventsPerCollector {
+		result.Events = result.Events[:cfg.MaxEventsPerCollector]
+		result.Truncated = true
 	}
 
 	return result, nil

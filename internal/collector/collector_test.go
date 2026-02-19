@@ -28,6 +28,58 @@ func TestDefaultConfig(t *testing.T) {
 	}
 }
 
+func TestDefaultConfigBooleans(t *testing.T) {
+	cfg := DefaultConfig()
+
+	if cfg.Quiet {
+		t.Error("Quiet should default to false")
+	}
+	if cfg.Verbose {
+		t.Error("Verbose should default to false")
+	}
+}
+
+func TestDefaultConfigSlicesEmpty(t *testing.T) {
+	cfg := DefaultConfig()
+
+	if cfg.Focus != nil {
+		t.Errorf("Focus should default to nil, got %v", cfg.Focus)
+	}
+	if cfg.TargetPIDs != nil {
+		t.Errorf("TargetPIDs should default to nil, got %v", cfg.TargetPIDs)
+	}
+	if cfg.TargetCgroups != nil {
+		t.Errorf("TargetCgroups should default to nil, got %v", cfg.TargetCgroups)
+	}
+}
+
+func TestConfigFocusCanBeSet(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Focus = []string{"network", "disk"}
+
+	if len(cfg.Focus) != 2 {
+		t.Errorf("Focus = %v, want [network disk]", cfg.Focus)
+	}
+}
+
+func TestConfigTargetPIDsCanBeSet(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.TargetPIDs = []int{1234}
+
+	if len(cfg.TargetPIDs) != 1 || cfg.TargetPIDs[0] != 1234 {
+		t.Errorf("TargetPIDs = %v, want [1234]", cfg.TargetPIDs)
+	}
+}
+
+func TestConfigMaxEventsOverride(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.MaxEventsPerCollector = 500
+
+	if cfg.MaxEventsPerCollector != 500 {
+		t.Errorf("MaxEventsPerCollector = %d, want 500", cfg.MaxEventsPerCollector)
+	}
+}
+
 func TestAvailability(t *testing.T) {
 	tests := []struct {
 		name string

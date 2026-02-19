@@ -371,33 +371,74 @@ func DefaultThresholds() []Threshold {
 	}
 }
 
-// histogramP99Evaluator returns an evaluator that searches all results for a
-// histogram with the given name and returns its P99 value. If rotational is
-// true, only matches devices flagged as rotational (HDD).
-func histogramP99Evaluator(histName string, rotational bool) func(*Report) (float64, bool) {
+// histogramP99Evaluator returns an evaluator that searches for histograms
+// from a given collector and returns the max P99 value in milliseconds.
+// If rotational is true, only matches histograms for rotational (HDD) devices;
+// if false, only matches non-rotational (SSD/NVMe) devices.
+// It cross-references with Tier 1 disk data to determine device type.
+func histogramP99Evaluator(collectorName string, rotational bool) func(*Report) (float64, bool) {
 	return func(r *Report) (float64, bool) {
-		for _, results := range r.Categories {
-			for _, res := range results {
-				for _, h := range res.Histograms {
-					if h.Name == histName || (rotational && h.Name == histName+"_hdd") ||
-						(!rotational && h.Name == histName+"_ssd") {
-						if h.P99 > 0 {
-							return h.P99, true
-						}
-					}
-				}
-				// Also check by collector name with generic histogram
-				if res.Collector == histName {
-					for _, h := range res.Histograms {
-						if h.P99 > 0 {
-							return h.P99, true
-						}
+		// Build set of rotational devices from Tier 1 disk data
+		rotationalDevs := make(map[string]bool)
+		if diskResults, ok := r.Categories["disk"]; ok {
+			for _, res := range diskResults {
+				if disk, ok := res.Data.(*DiskData); ok {
+					for _, dev := range disk.Devices {
+						rotationalDevs[dev.Name] = dev.Rotational
 					}
 				}
 			}
 		}
-		return 0, false
+
+		var maxP99 float64
+		found := false
+		for _, results := range r.Categories {
+			for _, res := range results {
+				if res.Collector != collectorName {
+					continue
+				}
+				for _, h := range res.Histograms {
+					if h.P99 <= 0 {
+						continue
+					}
+
+					// For biolatency, match device type from histogram name
+					if collectorName == "biolatency" && len(rotationalDevs) > 0 {
+						devName := extractDeviceName(h.Name)
+						if devName != "" {
+							isRotational, known := rotationalDevs[devName]
+							if known && isRotational != rotational {
+								continue // wrong device type
+							}
+						}
+					}
+
+					// Convert to milliseconds if histogram is in microseconds
+					p99ms := h.P99
+					if h.Unit == "us" {
+						p99ms = h.P99 / 1000.0
+					}
+					if p99ms > maxP99 {
+						maxP99 = p99ms
+						found = true
+					}
+				}
+			}
+		}
+		return maxP99, found
 	}
+}
+
+// extractDeviceName extracts a device name from a histogram name like
+// "block_io_latency_nvme0n1" → "nvme0n1".
+func extractDeviceName(histName string) string {
+	prefixes := []string{"block_io_latency_"}
+	for _, prefix := range prefixes {
+		if len(histName) > len(prefix) && histName[:len(prefix)] == prefix {
+			return histName[len(prefix):]
+		}
+	}
+	return ""
 }
 
 // DetectAnomalies runs all threshold checks against the report.

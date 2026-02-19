@@ -90,24 +90,6 @@ func (c *CPUCollector) Collect(ctx context.Context, cfg CollectConfig) (*model.R
 	// CPU PSI pressure
 	c.parseCPUPSI(data)
 
-	// Observer-effect compensation: subtract melisai's own CPU usage
-	if cfg.PIDTracker != nil {
-		overhead := cfg.PIDTracker.SnapshotAfter()
-		intervalMs := interval.Seconds() * 1000
-		if intervalMs > 0 && data.NumCPUs > 0 {
-			userCompensation := float64(overhead.CPUUserMs) / intervalMs * 100 / float64(data.NumCPUs)
-			sysCompensation := float64(overhead.CPUSystemMs) / intervalMs * 100 / float64(data.NumCPUs)
-			data.EstimatedUserPct = data.UserPct - userCompensation
-			data.EstimatedSystemPct = data.SystemPct - sysCompensation
-			if data.EstimatedUserPct < 0 {
-				data.EstimatedUserPct = 0
-			}
-			if data.EstimatedSystemPct < 0 {
-				data.EstimatedSystemPct = 0
-			}
-		}
-	}
-
 	return &model.Result{
 		Collector: c.Name(),
 		Category:  c.Category(),

@@ -147,8 +147,6 @@ type CPUData struct {
 	StealPct              float64  `json:"steal_pct"`
 	IRQPct                float64  `json:"irq_pct"`
 	SoftIRQPct            float64  `json:"softirq_pct"`
-	EstimatedUserPct      float64  `json:"estimated_user_pct,omitempty"`
-	EstimatedSystemPct    float64  `json:"estimated_system_pct,omitempty"`
 	ContextSwitchesPerSec int64    `json:"context_switches_per_sec"`
 	LoadAvg1              float64  `json:"load_avg_1"`
 	LoadAvg5              float64  `json:"load_avg_5"`

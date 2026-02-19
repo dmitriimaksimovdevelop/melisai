@@ -35,11 +35,13 @@ func New(collectors []collector.Collector, cfg collector.CollectConfig) *Orchest
 	return &Orchestrator{
 		collectors: collectors,
 		config:     cfg,
-		progress:   output.NewProgress(!cfg.Quiet),
+		progress:   output.NewVerboseProgress(!cfg.Quiet, cfg.Verbose),
 	}
 }
 
-// Run executes all collectors in parallel with timeout and signal handling.
+// Run executes collectors in two phases to avoid observer effect:
+//   Phase 1: Tier 1 (procfs) collectors run alone on a clean system
+//   Phase 2: Tier 2/3 (BCC/eBPF) collectors run in parallel
 // Returns a partial report if interrupted (SIGINT/SIGTERM).
 func (o *Orchestrator) Run(ctx context.Context) (*model.Report, error) {
 	// Set up timeouts first, then signal handling
@@ -77,17 +79,102 @@ func (o *Orchestrator) Run(ctx context.Context) (*model.Report, error) {
 
 	// Filter collectors by availability and focus
 	active := o.filterCollectors()
-	o.progress.Log("Starting collection: profile=%s, duration=%s, collectors=%d",
-		o.config.Profile, profile.Duration, len(active))
 
-	// Run all collectors in parallel
+	// Split into Tier 1 (procfs, lightweight) and Tier 2/3 (BCC/eBPF, heavy)
+	var tier1, tier23 []collector.Collector
+	for _, c := range active {
+		if c.Available().Tier == 1 {
+			tier1 = append(tier1, c)
+		} else {
+			tier23 = append(tier23, c)
+		}
+	}
+
+	o.progress.Log("Starting collection: profile=%s, duration=%s, tier1=%d, tier2/3=%d",
+		o.config.Profile, profile.Duration, len(tier1), len(tier23))
+
+	// Phase 1: Run Tier 1 collectors on a clean system (no BCC overhead).
+	// This gives accurate CPU, memory, disk, and network baseline metrics.
+	o.progress.Log("Phase 1: System baseline (Tier 1, no BPF tools running)...")
+	phase1Results := o.runCollectorsParallel(ctx, tier1)
+
+	// Check for interruption between phases
+	if ctx.Err() != nil {
+		o.progress.Log("Interrupted after Phase 1, building partial report...")
+	}
+
+	// Phase 2: Run Tier 2/3 collectors (BCC/eBPF — CPU-intensive)
+	var phase2Results map[string][]*model.Result
+	if ctx.Err() == nil && len(tier23) > 0 {
+		o.progress.Log("Phase 2: BCC/eBPF tools (%d collectors)...", len(tier23))
+		phase2Results = o.runCollectorsParallel(ctx, tier23)
+	}
+
+	// Cancel context so the signal-handling goroutine exits promptly
+	cancel()
+
+	// Merge phase 1 and phase 2 results
+	allResults := phase1Results
+	for cat, resultPtrs := range phase2Results {
+		allResults[cat] = append(allResults[cat], resultPtrs...)
+	}
+
+	// Sort results within each category by collector name for deterministic output
+	categories := make(map[string][]model.Result)
+	for cat, resultPtrs := range allResults {
+		sort.Slice(resultPtrs, func(i, j int) bool {
+			return resultPtrs[i].Collector < resultPtrs[j].Collector
+		})
+		for _, r := range resultPtrs {
+			categories[cat] = append(categories[cat], *r)
+		}
+	}
+
+	// Snapshot observer overhead after all collectors finish
+	overhead := tracker.SnapshotAfter()
+
+	// Build report
+	meta := o.buildMetadata(profile)
+	meta.ObserverOverhead = &model.ObserverOverhead{
+		SelfPID:         overhead.SelfPID,
+		ChildPIDs:       overhead.ChildPIDs,
+		CPUUserMs:       overhead.CPUUserMs,
+		CPUSystemMs:     overhead.CPUSystemMs,
+		MemoryRSSBytes:  overhead.MemoryRSSBytes,
+		DiskReadBytes:   overhead.DiskReadBytes,
+		DiskWriteBytes:  overhead.DiskWriteBytes,
+		ContextSwitches: overhead.ContextSwitches,
+	}
+
+	report := &model.Report{
+		Metadata:   meta,
+		Categories: categories,
+		Summary: model.Summary{
+			Anomalies: []model.Anomaly{},
+			Resources: map[string]model.USEMetric{},
+		},
+	}
+
+	// Compute USE metrics, anomalies, health score, recommendations
+	report.Summary.Resources = model.ComputeUSEMetrics(report)
+	report.Summary.Anomalies = model.DetectAnomalies(report)
+	report.Summary.HealthScore = model.ComputeHealthScore(report.Summary.Resources, report.Summary.Anomalies)
+	report.Summary.Recommendations = model.GenerateRecommendations(report)
+
+	o.progress.Log("Collection complete. %d categories, health=%d/100, anomalies=%d",
+		len(categories), report.Summary.HealthScore, len(report.Summary.Anomalies))
+	return report, nil
+}
+
+// runCollectorsParallel runs a set of collectors in parallel and returns results by category.
+func (o *Orchestrator) runCollectorsParallel(ctx context.Context, collectors []collector.Collector) map[string][]*model.Result {
 	var (
 		mu      sync.Mutex
 		results = make(map[string][]*model.Result)
 		wg      sync.WaitGroup
 	)
 
-	for _, c := range active {
+	for _, c := range collectors {
 		wg.Add(1)
 		go func(c collector.Collector) {
 			defer wg.Done()
@@ -123,7 +210,6 @@ func (o *Orchestrator) Run(ctx context.Context) (*model.Report, error) {
 				} else {
 					o.progress.Log("  [%s] error: %v (%s)", name, err, elapsed.Round(time.Millisecond))
 				}
-				// Even on error, create a result with the error recorded
 				result = &model.Result{
 					Collector: name,
 					Category:  c.Category(),
@@ -143,64 +229,40 @@ func (o *Orchestrator) Run(ctx context.Context) (*model.Report, error) {
 	}
 
 	wg.Wait()
+	return results
+}
 
-	// Cancel context so the signal-handling goroutine exits promptly
-	// instead of waiting for the profile timeout.
-	cancel()
-
-	// Sort results within each category by collector name for deterministic output
-	categories := make(map[string][]model.Result)
-	for cat, resultPtrs := range results {
-		sort.Slice(resultPtrs, func(i, j int) bool {
-			return resultPtrs[i].Collector < resultPtrs[j].Collector
-		})
-		for _, r := range resultPtrs {
-			categories[cat] = append(categories[cat], *r)
-		}
-	}
-
-	// Snapshot observer overhead after all collectors finish
-	overhead := tracker.SnapshotAfter()
-
-	// Build report
-	meta := o.buildMetadata(profile)
-	meta.ObserverOverhead = &model.ObserverOverhead{
-		SelfPID:         overhead.SelfPID,
-		ChildPIDs:       overhead.ChildPIDs,
-		CPUUserMs:       overhead.CPUUserMs,
-		CPUSystemMs:     overhead.CPUSystemMs,
-		MemoryRSSBytes:  overhead.MemoryRSSBytes,
-		DiskReadBytes:   overhead.DiskReadBytes,
-		DiskWriteBytes:  overhead.DiskWriteBytes,
-		ContextSwitches: overhead.ContextSwitches,
-	}
-
-	report := &model.Report{
-		Metadata:   meta,
-		Categories: categories,
-		Summary: model.Summary{
-			Anomalies: []model.Anomaly{},
-			Resources: map[string]model.USEMetric{},
-		},
-	}
-
-	// Phase 4: compute USE metrics, anomalies, health score, recommendations
-	report.Summary.Resources = model.ComputeUSEMetrics(report)
-	report.Summary.Anomalies = model.DetectAnomalies(report)
-	report.Summary.HealthScore = model.ComputeHealthScore(report.Summary.Resources, report.Summary.Anomalies)
-	report.Summary.Recommendations = model.GenerateRecommendations(report)
-
-	o.progress.Log("Collection complete. %d categories, health=%d/100, anomalies=%d",
-		len(categories), report.Summary.HealthScore, len(report.Summary.Anomalies))
-	return report, nil
+// focusCategoryMap maps user-facing focus area names to collector categories.
+var focusCategoryMap = map[string]string{
+	"stacks":    "stacktrace",
+	"cpu":       "cpu",
+	"memory":    "memory",
+	"disk":      "disk",
+	"network":   "network",
+	"process":   "process",
+	"container": "container",
 }
 
 // filterCollectors returns only available collectors,
-// respecting focus area filtering.
+// respecting profile restrictions and focus area filtering.
+// When --focus is set, Tier 1 collectors always run (baseline data),
+// but Tier 2/3 collectors are limited to matching categories.
 func (o *Orchestrator) filterCollectors() []collector.Collector {
 	var active []collector.Collector
 
 	profile := GetProfile(o.config.Profile)
+
+	// Build focus category set
+	focusCategories := make(map[string]bool)
+	for _, f := range o.config.Focus {
+		if cat, ok := focusCategoryMap[f]; ok {
+			focusCategories[cat] = true
+		} else {
+			// If not in map, use as-is (e.g. "stacktrace" directly)
+			focusCategories[f] = true
+		}
+	}
+	hasFocus := len(focusCategories) > 0
 
 	for _, c := range o.collectors {
 		avail := c.Available()
@@ -219,6 +281,14 @@ func (o *Orchestrator) filterCollectors() []collector.Collector {
 				}
 			}
 			if !found {
+				continue
+			}
+		}
+
+		// Focus filtering: Tier 1 always included, Tier 2/3 only if category matches
+		if hasFocus && avail.Tier > 1 {
+			if !focusCategories[c.Category()] {
+				o.progress.Log("  [%s] skipped: not in focus areas %v", c.Name(), o.config.Focus)
 				continue
 			}
 		}

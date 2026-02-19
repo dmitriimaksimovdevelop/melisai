@@ -30,7 +30,7 @@ func ComputeUSEMetrics(report *Report) map[string]USEMetric {
 				resources["memory"] = USEMetric{
 					Utilization: utilization,
 					Saturation:  computeMemSaturation(mem),
-					Errors:      int(mem.MajorFaults), // OOM-related
+					Errors:      0, // MajorFaults is cumulative since boot, not a current error count
 				}
 				break
 			}
@@ -152,12 +152,14 @@ func computeNetSaturation(net *NetworkData) float64 {
 }
 
 func computeNetErrors(net *NetworkData) int {
-	total := 0
+	// Use delta-based error rates (per second), not cumulative counters.
+	// ErrorsPerSec is computed from two-point sampling in the network collector.
+	totalRate := 0.0
 	for _, iface := range net.Interfaces {
-		total += int(iface.RxErrors + iface.TxErrors + iface.RxDropped + iface.TxDropped)
+		totalRate += iface.ErrorsPerSec
 	}
 	if net.TCP != nil {
-		total += net.TCP.RetransSegs + net.TCP.InErrs
+		totalRate += net.TCP.RetransRate
 	}
-	return total
+	return int(totalRate)
 }

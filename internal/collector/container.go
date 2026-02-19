@@ -39,8 +39,12 @@ func (c *ContainerCollector) Collect(ctx context.Context, cfg CollectConfig) (*m
 	// Detect cgroup version
 	data.CgroupVersion = c.detectCgroupVersion()
 
-	// Read cgroup path for PID 1
-	data.CgroupPath = c.readCgroupPath()
+	// Read cgroup path for PID 1 (or use target cgroup)
+	if len(cfg.TargetCgroups) > 0 {
+		data.CgroupPath = cfg.TargetCgroups[0]
+	} else {
+		data.CgroupPath = c.readCgroupPath()
+	}
 
 	// Kubernetes pod info
 	if data.Runtime == "kubernetes" {
@@ -51,11 +55,11 @@ func (c *ContainerCollector) Collect(ctx context.Context, cfg CollectConfig) (*m
 	// Container ID from cgroup path
 	data.ContainerID = c.extractContainerID(data.CgroupPath)
 
-	// Cgroup metrics
+	// Cgroup metrics — read from target cgroup path if specified
 	if data.CgroupVersion == 2 {
-		c.collectCgroupV2Metrics(data)
+		c.collectCgroupV2MetricsFromPath(data, cfg.TargetCgroups)
 	} else if data.CgroupVersion == 1 {
-		c.collectCgroupV1Metrics(data)
+		c.collectCgroupV1MetricsFromPath(data, cfg.TargetCgroups)
 	}
 
 	return &model.Result{
@@ -164,9 +168,12 @@ func isHex(s string) bool {
 	return true
 }
 
-// collectCgroupV2Metrics reads cgroup v2 metrics.
-func (c *ContainerCollector) collectCgroupV2Metrics(data *model.ContainerData) {
+// collectCgroupV2MetricsFromPath reads cgroup v2 metrics, optionally from a specific cgroup path.
+func (c *ContainerCollector) collectCgroupV2MetricsFromPath(data *model.ContainerData, targetCgroups []string) {
 	cgroupBase := filepath.Join(c.sysRoot, "fs", "cgroup")
+	if len(targetCgroups) > 0 {
+		cgroupBase = filepath.Join(c.sysRoot, "fs", "cgroup", targetCgroups[0])
+	}
 
 	// CPU quota: cpu.max (format: "quota period" or "max period")
 	cpuMax := c.readCgroupFile(cgroupBase, "cpu.max")
@@ -202,18 +209,24 @@ func (c *ContainerCollector) collectCgroupV2Metrics(data *model.ContainerData) {
 	data.MemoryUsage, _ = strconv.ParseInt(memCurrent, 10, 64)
 }
 
-// collectCgroupV1Metrics reads cgroup v1 metrics.
-func (c *ContainerCollector) collectCgroupV1Metrics(data *model.ContainerData) {
+// collectCgroupV1MetricsFromPath reads cgroup v1 metrics, optionally from a specific cgroup path.
+func (c *ContainerCollector) collectCgroupV1MetricsFromPath(data *model.ContainerData, targetCgroups []string) {
 	cgroupBase := filepath.Join(c.sysRoot, "fs", "cgroup")
+	// For v1, target cgroup path is appended to each controller subdirectory
+	cgroupSuffix := ""
+	if len(targetCgroups) > 0 {
+		cgroupSuffix = targetCgroups[0]
+	}
 
 	// CPU quota
-	quotaStr := c.readCgroupFile(filepath.Join(cgroupBase, "cpu"), "cpu.cfs_quota_us")
+	cpuDir := filepath.Join(cgroupBase, "cpu", cgroupSuffix)
+	quotaStr := c.readCgroupFile(cpuDir, "cpu.cfs_quota_us")
 	data.CPUQuota, _ = strconv.ParseInt(quotaStr, 10, 64)
-	periodStr := c.readCgroupFile(filepath.Join(cgroupBase, "cpu"), "cpu.cfs_period_us")
+	periodStr := c.readCgroupFile(cpuDir, "cpu.cfs_period_us")
 	data.CPUPeriod, _ = strconv.ParseInt(periodStr, 10, 64)
 
 	// CPU throttling
-	throttleStat := c.readCgroupFile(filepath.Join(cgroupBase, "cpu"), "cpu.stat")
+	throttleStat := c.readCgroupFile(cpuDir, "cpu.stat")
 	for _, line := range strings.Split(throttleStat, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 2 {
@@ -230,9 +243,10 @@ func (c *ContainerCollector) collectCgroupV1Metrics(data *model.ContainerData) {
 	}
 
 	// Memory limit
-	memLimit := c.readCgroupFile(filepath.Join(cgroupBase, "memory"), "memory.limit_in_bytes")
+	memDir := filepath.Join(cgroupBase, "memory", cgroupSuffix)
+	memLimit := c.readCgroupFile(memDir, "memory.limit_in_bytes")
 	data.MemoryLimit, _ = strconv.ParseInt(memLimit, 10, 64)
-	memUsage := c.readCgroupFile(filepath.Join(cgroupBase, "memory"), "memory.usage_in_bytes")
+	memUsage := c.readCgroupFile(memDir, "memory.usage_in_bytes")
 	data.MemoryUsage, _ = strconv.ParseInt(memUsage, 10, 64)
 }
 
