@@ -2,20 +2,29 @@ name: Release
 
 on:
     push:
-        tags:
-            - "v*"
+        branches:
+            - master
 
 permissions:
     contents: write
 
 jobs:
-    goreleaser:
+    release:
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
               uses: actions/checkout@v4
               with:
                   fetch-depth: 0
+
+            - name: Bump version and push tag
+              id: tag_version
+              uses: mathieudutour/github-tag-action@v6.1
+              with:
+                  github_token: ${{ secrets.GITHUB_TOKEN }}
+                  default_bump: patch
+                  release_branches: master
+                  dry_run: false
 
             - name: Set up Go
               uses: actions/setup-go@v5
@@ -30,3 +39,4 @@ jobs:
                   args: release --clean
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              if: steps.tag_version.outputs.new_tag != ''
