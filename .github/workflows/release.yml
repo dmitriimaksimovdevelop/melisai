@@ -26,6 +26,9 @@ jobs:
                   release_branches: master
                   dry_run: false
 
+            - name: Fetch tags
+              run: git fetch --tags
+
             - name: Set up Go
               uses: actions/setup-go@v5
               with:
