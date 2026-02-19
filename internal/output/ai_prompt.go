@@ -83,8 +83,8 @@ func GenerateAIPrompt(report *model.Report) *model.AIContext {
 
 	// Two-phase collection note
 	sb.WriteString("COLLECTION METHOD: Two-phase collection was used to avoid observer effect.\n")
-	sb.WriteString("Phase 1: Tier 1 (procfs) collectors ran on a clean system — CPU, memory, disk, network baselines are accurate.\n")
-	sb.WriteString("Phase 2: Tier 2/3 (BCC/eBPF) tools ran after baseline collection — latency histograms, events, and stack traces.\n\n")
+	sb.WriteString("Phase 1: Tier 1 (procfs) collectors ran on a clean system -- CPU, memory, disk, network baselines are accurate.\n")
+	sb.WriteString("Phase 2: Tier 2/3 (BCC/eBPF) tools ran after baseline collection -- latency histograms, events, and stack traces.\n\n")
 
 	// Health score context
 	sb.WriteString(fmt.Sprintf("Health Score: %d/100\n", report.Summary.HealthScore))
@@ -129,7 +129,7 @@ func GenerateAIPrompt(report *model.Report) *model.AIContext {
 		sb.WriteString("\nStack traces are available. Analyze hot code paths and ")
 		sb.WriteString("identify contention points (futex, mutex, I/O waits).\n")
 		if hasPIDTarget {
-			sb.WriteString("Stacks are filtered to the target PID — all code paths belong to the target application.\n")
+			sb.WriteString("Stacks are filtered to the target PID -- all code paths belong to the target application.\n")
 		}
 	}
 
@@ -149,6 +149,31 @@ func GenerateAIPrompt(report *model.Report) *model.AIContext {
 		if hasPIDTarget {
 			sb.WriteString("Histograms from PID-filtered tools reflect only the target application's latency profile.\n")
 		}
+	}
+
+	// Empty BCC results warning: if more than 50% of Tier 2 results have no
+	// histograms, events, or stacks, warn the AI that data may be incomplete.
+	tier2Total := 0
+	tier2Empty := 0
+	for _, results := range report.Categories {
+		for _, r := range results {
+			if r.Tier != 2 {
+				continue
+			}
+			tier2Total++
+			if len(r.Histograms) == 0 && len(r.Events) == 0 && len(r.Stacks) == 0 {
+				tier2Empty++
+			}
+		}
+	}
+	if tier2Total > 0 && tier2Empty*2 > tier2Total {
+		sb.WriteString(fmt.Sprintf(
+			"\nWARNING: %d of %d BCC tools returned empty results. "+
+				"This may indicate a signal-handling issue where BCC Python tools were killed "+
+				"before flushing output. Consider re-running with a longer timeout or checking "+
+				"tool compatibility. Interpret Tier 2 data with caution and rely primarily on "+
+				"Tier 1 (procfs) metrics for this analysis.\n",
+			tier2Empty, tier2Total))
 	}
 
 	// Observer effect note
@@ -174,27 +199,31 @@ func GenerateAIPrompt(report *model.Report) *model.AIContext {
 func knownAntiPatterns() []string {
 	return []string{
 		"P1: CPU saturation with single-threaded bottleneck (load_avg > num_cpus but one CPU at 100%)",
-		"P2: Memory pressure cascade (high dirty_ratio → write stalls → iowait → apparent CPU saturation)",
-		"P3: Swap death spiral (swap active + high major faults → exponential performance degradation)",
-		"P4: Network retransmit storm (cubic congestion control + high RTT → throughput collapse)",
-		"P5: Disk I/O amplification (random reads on rotational → queue depth explosion)",
-		"P6: Lock contention hotspot (futex_wait in stack traces → serialized processing)",
-		"P7: Container CPU throttling (cfs_quota too low → periodic latency spikes)",
-		"P8: NUMA imbalance (cross-node memory access → 2-3x latency penalty)",
-		"P9: IRQ imbalance (all interrupts on CPU 0 → single-core bottleneck)",
-		"P10: File descriptor exhaustion (approaching ulimit → EMFILE errors)",
-		"P11: Conntrack table overflow (nf_conntrack_max → packet drops)",
-		"P12: TIME_WAIT accumulation (short-lived connections → port exhaustion)",
-		"P13: Dirty page writeback storm (vm.dirty_ratio too high → periodic I/O stalls)",
-		"P14: THP defragmentation stall (transparent hugepages + fragmented memory → allocation latency)",
+		"P2: Memory pressure cascade (high dirty_ratio -> write stalls -> iowait -> apparent CPU saturation)",
+		"P3: Swap death spiral (swap active + high major faults -> exponential performance degradation)",
+		"P4: Network retransmit storm (cubic congestion control + high RTT -> throughput collapse)",
+		"P5: Disk I/O amplification (random reads on rotational -> queue depth explosion)",
+		"P6: Lock contention hotspot (futex_wait in stack traces -> serialized processing)",
+		"P7: Container CPU throttling (cfs_quota too low -> periodic latency spikes)",
+		"P8: NUMA imbalance (cross-node memory access -> 2-3x latency penalty)",
+		"P9: IRQ imbalance (all interrupts on CPU 0 -> single-core bottleneck)",
+		"P10: File descriptor exhaustion (approaching ulimit -> EMFILE errors)",
+		"P11: Conntrack table overflow (nf_conntrack_max -> packet drops)",
+		"P12: TIME_WAIT accumulation (short-lived connections -> port exhaustion)",
+		"P13: Dirty page writeback storm (vm.dirty_ratio too high -> periodic I/O stalls)",
+		"P14: THP defragmentation stall (transparent hugepages + fragmented memory -> allocation latency)",
 		"P15: Scheduler migration overhead (processes bouncing between NUMA nodes)",
 		"P16: I/O scheduler mismatch (using cfq on SSD instead of none/mq-deadline)",
 		"P17: TCP buffer autotune failure (rmem/wmem too small for high-BDP links)",
-		"P18: cgroup memory thrashing (near limit → constant reclaim → high PSI)",
-		"P19: Kernel softlockup (debug logging storm → RCU stall)",
-		"P20: DNS resolution blocking (gethostlatency spikes → application timeout cascade)",
+		"P18: cgroup memory thrashing (near limit -> constant reclaim -> high PSI)",
+		"P19: Kernel softlockup (debug logging storm -> RCU stall)",
+		"P20: DNS resolution blocking (gethostlatency spikes -> application timeout cascade)",
 		"P21: AppArmor per-packet overhead (LSM hooks on high-PPS workloads)",
-		"P22: Per-process resource leak (FD count growing, RSS growing without release → eventual OOM/EMFILE)",
-		"P23: Application thread pool exhaustion (all threads blocked on I/O or locks → request queuing)",
+		"P22: Per-process resource leak (FD count growing, RSS growing without release -> eventual OOM/EMFILE)",
+		"P23: Application thread pool exhaustion (all threads blocked on I/O or locks -> request queuing)",
+		"P24: Kafka/message-broker fsync storm (frequent fsync on rotational storage -> I/O queue saturation -> cascading latency to all co-located containers)",
+		"P25: Docker log I/O contention (dockerd JSON-log writer + Fluent Bit log reader competing for same disk -> container stdout blocking -> application hangs)",
+		"P26: HDD I/O scheduler mismatch (mq-deadline on rotational under containerized mixed workload -> no I/O fairness, use BFQ instead)",
+		"P27: Page cache dirty write amplification (0% cache hit + high dirty page rate -> all I/O is write-through, no read caching benefit)",
 	}
 }

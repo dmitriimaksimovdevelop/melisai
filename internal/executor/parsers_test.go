@@ -230,6 +230,134 @@ func TestParseProfileStacks(t *testing.T) {
 	}
 }
 
+// --- Ubuntu 24.04 Real-Output Tests ---
+
+func TestParseBiolatencyUbuntu2404(t *testing.T) {
+	raw := readTestdata(t, "biolatency_ubuntu2404.txt")
+	result, err := ParseBiolatency(raw)
+	if err != nil {
+		t.Fatalf("ParseBiolatency: %v", err)
+	}
+	if result.Collector != "biolatency" {
+		t.Errorf("collector = %q, want biolatency", result.Collector)
+	}
+	if len(result.Histograms) != 2 {
+		t.Fatalf("expected 2 disk histograms, got %d", len(result.Histograms))
+	}
+	// Verify both disks are present
+	names := map[string]bool{}
+	for _, h := range result.Histograms {
+		names[h.Name] = true
+	}
+	if !names["block_io_latency_sdb"] || !names["block_io_latency_sda"] {
+		t.Errorf("expected sdb and sda histograms, got: %v", names)
+	}
+}
+
+func TestParseRunqlatUbuntu2404(t *testing.T) {
+	raw := readTestdata(t, "runqlat_ubuntu2404.txt")
+	result, err := ParseRunqlat(raw)
+	if err != nil {
+		t.Fatalf("ParseRunqlat: %v", err)
+	}
+	if result.Collector != "runqlat" {
+		t.Errorf("collector = %q, want runqlat", result.Collector)
+	}
+	if len(result.Histograms) == 0 {
+		t.Fatal("no histograms parsed")
+	}
+	hist := result.Histograms[0]
+	if hist.TotalCount == 0 {
+		t.Error("totalCount = 0")
+	}
+	// Tail latency should reach into the tens-of-ms range (32768+ us bucket)
+	if hist.Max < 32768 {
+		t.Errorf("max = %v, expected >= 32768 us (tail to ~65ms)", hist.Max)
+	}
+}
+
+func TestParseExt4slowerUbuntu2404(t *testing.T) {
+	raw := readTestdata(t, "ext4slower_ubuntu2404.txt")
+	result, err := ParseBiosnoop(raw, 100) // reuse tabular parser via ParseBiosnoop
+	_ = result
+	_ = err
+	// Parse via ParseTabularEvents directly to verify preamble handling
+	events, truncated := ParseTabularEvents(raw, 100)
+	if truncated {
+		t.Error("should not be truncated")
+	}
+	if len(events) == 0 {
+		t.Fatal("no events parsed from ext4slower_ubuntu2404.txt")
+	}
+	// Check that events contain expected processes
+	comms := map[string]bool{}
+	for _, e := range events {
+		comms[e.Comm] = true
+	}
+	if !comms["dockerd"] {
+		t.Errorf("expected dockerd in events, got comms: %v", comms)
+	}
+	if !comms["kafka-raft-io"] {
+		t.Errorf("expected kafka-raft-io in events, got comms: %v", comms)
+	}
+}
+
+func TestParseCachestatUbuntu2404(t *testing.T) {
+	raw := readTestdata(t, "cachestat_ubuntu2404.txt")
+	result, err := ParseCachestat(raw)
+	if err != nil {
+		t.Fatalf("ParseCachestat: %v", err)
+	}
+	if result.Collector != "cachestat" {
+		t.Errorf("collector = %q, want cachestat", result.Collector)
+	}
+	if len(result.Events) == 0 {
+		t.Fatal("no events parsed from cachestat_ubuntu2404.txt")
+	}
+	// Each event should have MISSES and DIRTIES fields
+	first := result.Events[0]
+	if _, ok := first.Details["misses"]; !ok {
+		t.Error("missing 'misses' field in cachestat event")
+	}
+	if _, ok := first.Details["dirties"]; !ok {
+		t.Error("missing 'dirties' field in cachestat event")
+	}
+}
+
+func TestParseHistogramWithPreamble(t *testing.T) {
+	// Verify that ParseHistogram correctly skips preamble and parses buckets
+	raw := readTestdata(t, "runqlat_ubuntu2404.txt")
+	hist, err := ParseHistogram(raw, "run_queue_latency", "us")
+	if err != nil {
+		t.Fatalf("ParseHistogram with preamble: %v", err)
+	}
+	if len(hist.Buckets) == 0 {
+		t.Fatal("no buckets parsed from file with Tracing preamble")
+	}
+}
+
+func TestParseTabularEventsWithPreamble(t *testing.T) {
+	// Verify that ParseTabularEvents skips "Tracing..." and "Attaching..." lines
+	input := "Tracing ext4 operations slower than 1 ms\nTIME COMM PID LAT(ms)\n10:00:01 bash 1234 5.2\n"
+	events, _ := ParseTabularEvents(input, 100)
+	if len(events) == 0 {
+		t.Fatal("no events parsed when preamble present")
+	}
+	if events[0].Comm != "bash" {
+		t.Errorf("comm = %q, want bash", events[0].Comm)
+	}
+
+	// Also verify Attaching preamble is skipped
+	input2 := "Attaching 10 probes...\nCOMM PID LAT\nngrok 555 3.1\n"
+	events2, _ := ParseTabularEvents(input2, 100)
+	if len(events2) == 0 {
+		t.Fatal("no events parsed when Attaching preamble present")
+	}
+	if events2[0].Comm != "ngrok" {
+		t.Errorf("comm = %q, want ngrok", events2[0].Comm)
+	}
+}
+
 // --- Error Case Tests ---
 
 func TestParseHistogramMalformed(t *testing.T) {

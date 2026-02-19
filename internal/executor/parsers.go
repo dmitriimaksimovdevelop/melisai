@@ -12,6 +12,20 @@ import (
 	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
 )
 
+// ansiEscapeRe matches ANSI terminal escape sequences (e.g. color codes).
+var ansiEscapeRe = regexp.MustCompile(`\x1b\[[0-9;]*[mGKHF]`)
+
+// stripANSI removes ANSI terminal escape sequences from s.
+func stripANSI(s string) string {
+	return ansiEscapeRe.ReplaceAllString(s, "")
+}
+
+// isPreambleLine returns true for BCC tool status lines that appear before the
+// actual data (e.g. "Tracing block device I/O... Hit Ctrl-C to end.").
+func isPreambleLine(line string) bool {
+	return strings.HasPrefix(line, "Tracing") || strings.HasPrefix(line, "Attaching")
+}
+
 // --- Histogram Parser ---
 
 // ParseHistogram parses BCC-style power-of-2 histogram output.
@@ -22,7 +36,9 @@ import (
 //	  2 -> 3  : 50     |***********                   |
 //
 // Returns a Histogram with ordered buckets and computed percentiles.
+// ANSI escape codes in raw are stripped before parsing.
 func ParseHistogram(raw string, name, unit string) (*model.Histogram, error) {
+	raw = stripANSI(raw)
 	lines := strings.Split(raw, "\n")
 	var buckets []model.HistBucket
 
@@ -169,21 +185,40 @@ func computePercentile(buckets []model.HistBucket, totalCount int64, pct float64
 // --- Event Parser ---
 
 // ParseTabularEvents parses BCC tabular output (e.g., tcpconnlat, tcpretrans).
-// Expects a header line followed by data lines.
+// It skips preamble lines that start with "Tracing" or "Attaching" before the
+// header, and tolerates data lines with more or fewer fields than the header.
 func ParseTabularEvents(raw string, maxEvents int) ([]model.Event, bool) {
 	lines := strings.Split(strings.TrimSpace(raw), "\n")
 	if len(lines) < 2 {
 		return nil, false
 	}
 
-	// First line is header
-	headers := strings.Fields(lines[0])
+	// Skip any preamble lines (e.g. "Tracing ... Hit Ctrl-C to end.") to find
+	// the actual header line.
+	headerIdx := -1
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || isPreambleLine(trimmed) {
+			continue
+		}
+		headerIdx = i
+		break
+	}
+	if headerIdx < 0 {
+		return nil, false
+	}
+
+	headers := strings.Fields(lines[headerIdx])
+	if len(headers) == 0 {
+		return nil, false
+	}
+
 	var events []model.Event
 	truncated := false
 
-	for _, line := range lines[1:] {
+	for _, line := range lines[headerIdx+1:] {
 		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "Tracing") || strings.HasPrefix(line, "TIME") {
+		if line == "" || isPreambleLine(line) {
 			continue
 		}
 
@@ -196,11 +231,14 @@ func ParseTabularEvents(raw string, maxEvents int) ([]model.Event, bool) {
 			Details: make(map[string]interface{}),
 		}
 
-		for i, header := range headers {
-			if i >= len(fields) {
-				break
-			}
-			headerLower := strings.ToLower(header)
+		// Iterate over the shorter of headers vs fields to handle mismatches.
+		limit := len(headers)
+		if len(fields) < limit {
+			limit = len(fields)
+		}
+
+		for i := 0; i < limit; i++ {
+			headerLower := strings.ToLower(headers[i])
 			switch headerLower {
 			case "time", "time(s)":
 				event.Time = fields[i]
@@ -242,7 +280,7 @@ func ParseFoldedStacks(raw string, stackType string) ([]model.StackTrace, error)
 			continue
 		}
 
-		// Find last space — everything before is the stack, after is the count
+		// Find last space -- everything before is the stack, after is the count
 		lastSpace := strings.LastIndex(line, " ")
 		if lastSpace < 0 {
 			continue
@@ -281,7 +319,7 @@ func ParseRunqlat(raw string) (*model.Result, error) {
 func ParseBiolatency(raw string) (*model.Result, error) {
 	hists, err := ParsePerDiskHistogram(raw, "us")
 	if err != nil {
-		// No histogram data (e.g. no disk I/O during collection) — return empty result
+		// No histogram data (e.g. no disk I/O during collection) -- return empty result
 		return &model.Result{
 			Collector: "biolatency",
 			Category:  "disk",
@@ -352,7 +390,7 @@ func ParseBiosnoop(raw string, maxEvents int) (*model.Result, error) {
 // ParseTcpdrop parses tcpdrop output (events + kernel stacks).
 func ParseTcpdrop(raw string, maxEvents int) (*model.Result, error) {
 	events, truncated := ParseTabularEvents(raw, maxEvents)
-	// tcpdrop also contains kernel stacks — parse those too
+	// tcpdrop also contains kernel stacks -- parse those too
 	stacks, _ := extractInlineStacks(raw)
 	return &model.Result{
 		Collector: "tcpdrop",

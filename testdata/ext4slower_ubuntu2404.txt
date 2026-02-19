@@ -1,0 +1,12 @@
+Tracing ext4 operations slower than 1 ms
+TIME     COMM           PID    T BYTES   OFF_KB   LAT(ms) FILENAME
+08:36:14 dockerd        1095   W 950     22060      25.33 overlay2-log
+08:36:14 flb-pipeline   3132368 R 5178    87266       4.92 container-log-1
+08:36:14 flb-pipeline   3132368 R 12359   22130       7.50 overlay2-log
+08:36:14 dockerd        1095   W 640     87281       3.27 container-log-1
+08:36:15 kafka-raft-io  5929   S 0       0         136.49 kafka-commit.log
+08:36:15 kafka-raft-io  5929   S 0       0          24.11 kafka-commit.index
+08:36:15 kafka-raft-io  5929   S 0       0          20.89 kafka-commit.timeindex
+08:36:15 dockerd        1095   W 871     22553     114.25 overlay2-log
+08:36:15 flb-pipeline   3132368 R 727     22552     115.79 overlay2-log
+08:36:15 kafka-raft-io  5929   S 0       0         261.27 kafka-commit.log

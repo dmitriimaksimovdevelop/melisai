@@ -1,0 +1,4 @@
+    HITS   MISSES  DIRTIES HITRATIO   BUFFERS_MB  CACHED_MB
+       0        0     1815    0.00%         1247       9420
+       0        0     1769    0.00%         1247       9419
+       0        0     1908    0.00%         1247       9419

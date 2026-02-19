@@ -5,8 +5,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
+	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -42,7 +45,15 @@ func NewBCCExecutor(auditLog bool) *BCCExecutor {
 	}
 }
 
+// gracefulShutdownTimeout is how long we wait after SIGINT before sending SIGKILL.
+const gracefulShutdownTimeout = 3 * time.Second
+
 // Run executes a BCC tool with security verification and output capping.
+// It uses exec.Command (not CommandContext) and implements graceful shutdown:
+// when the context is cancelled, SIGINT is sent to the process group first so
+// BCC Python tools can flush their buffered histogram/event output before
+// terminating.  If the process has not exited after gracefulShutdownTimeout,
+// SIGKILL is sent as a fallback.
 func (e *BCCExecutor) Run(ctx context.Context, tool string, args []string, duration time.Duration) (*RawOutput, error) {
 	start := time.Now()
 
@@ -57,12 +68,14 @@ func (e *BCCExecutor) Run(ctx context.Context, tool string, args []string, durat
 		return nil, fmt.Errorf("binary verification for %q: %w", binPath, err)
 	}
 
-	// Build command with sanitized environment
-	cmd := exec.CommandContext(ctx, binPath, args...)
+	// Use exec.Command (not CommandContext) so we control the signal sequence.
+	// SysProcAttr.Setpgid creates a new process group so SIGINT reaches the
+	// entire BCC Python interpreter tree (parent + any child processes).
+	cmd := exec.Command(binPath, args...)
 	cmd.Env = e.security.SanitizeEnv()
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	var stdout, stderr bytes.Buffer
-	// Use a limited writer to cap output
 	cmd.Stdout = &LimitedWriter{W: &stdout, N: e.maxOutputBytes}
 	cmd.Stderr = &stderr
 
@@ -70,9 +83,8 @@ func (e *BCCExecutor) Run(ctx context.Context, tool string, args []string, durat
 		fmt.Fprintf(&stderr, "[AUDIT] exec: %s %s\n", binPath, strings.Join(args, " "))
 	}
 
-	// Use Start+Wait instead of Run to capture the child PID
-	err = cmd.Start()
-	if err != nil {
+	// Use Start+Wait instead of Run to capture the child PID.
+	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start %s: %w", tool, err)
 	}
 
@@ -80,7 +92,47 @@ func (e *BCCExecutor) Run(ctx context.Context, tool string, args []string, durat
 		PID: cmd.Process.Pid,
 	}
 
-	err = cmd.Wait()
+	// done receives the error from cmd.Wait() when the child exits.
+	// exited is closed once done has been written, allowing multiple goroutines
+	// to observe process exit without consuming the error value.
+	done := make(chan error, 1)
+	exited := make(chan struct{})
+	go func() {
+		err := cmd.Wait()
+		done <- err
+		close(exited)
+	}()
+
+	// Watch for context cancellation and implement SIGINT -> wait -> SIGKILL.
+	go func() {
+		select {
+		case <-ctx.Done():
+			// Send SIGINT to the entire process group so BCC Python tools flush
+			// their buffered histogram/event output before terminating.
+			pgid := cmd.Process.Pid
+			if err := syscall.Kill(-pgid, syscall.SIGINT); err != nil {
+				// If sending to the group fails (e.g. already exited), try the
+				// process directly -- ignore errors since it may have already gone.
+				_ = cmd.Process.Signal(syscall.SIGINT)
+			}
+
+			// Give the process up to gracefulShutdownTimeout to flush & exit.
+			select {
+			case <-exited:
+				// Exited cleanly after SIGINT -- output is available.
+			case <-time.After(gracefulShutdownTimeout):
+				// Timed out; escalate to SIGKILL.
+				_ = syscall.Kill(-pgid, syscall.SIGKILL)
+				_ = cmd.Process.Signal(os.Kill)
+			}
+		case <-exited:
+			// Process exited on its own before context was cancelled.
+		}
+	}()
+
+	// Wait for the child to finish (either naturally or after signal handling).
+	// Only this goroutine receives from done; the signal goroutine uses exited.
+	waitErr := <-done
 
 	raw.Stdout = stdout.String()
 	raw.Stderr = stderr.String()
@@ -90,22 +142,28 @@ func (e *BCCExecutor) Run(ctx context.Context, tool string, args []string, durat
 		raw.ExitCode = cmd.ProcessState.ExitCode()
 	}
 
-	// Check if output was truncated
+	// Check if output was truncated.
 	if lw, ok := cmd.Stdout.(*LimitedWriter); ok && lw.Truncated {
 		raw.Truncated = true
 	}
 
-	// Context errors (timeout) take priority
-	if ctx.Err() != nil {
-		return raw, nil // partial output is fine on timeout
+	// Diagnostic hint: empty stdout but non-empty stderr is unusual and often
+	// indicates the process was killed before it could flush output.
+	if len(raw.Stdout) == 0 && len(raw.Stderr) > 0 {
+		log.Printf("[executor] %s: stdout empty, stderr=%q -- tool may have been killed before flushing output",
+			tool, raw.Stderr)
 	}
 
-	if err != nil {
-		// ExitError is expected for tools that are killed by timeout
-		if _, ok := err.(*exec.ExitError); ok {
+	// Context errors (timeout/cancel) take priority; partial output is fine.
+	if ctx.Err() != nil {
+		return raw, nil
+	}
+
+	if waitErr != nil {
+		if _, ok := waitErr.(*exec.ExitError); ok {
 			return raw, nil
 		}
-		return nil, fmt.Errorf("execute %s: %w", tool, err)
+		return nil, fmt.Errorf("execute %s: %w", tool, waitErr)
 	}
 
 	return raw, nil

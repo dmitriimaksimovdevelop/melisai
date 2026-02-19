@@ -40,8 +40,10 @@ func New(collectors []collector.Collector, cfg collector.CollectConfig) *Orchest
 }
 
 // Run executes collectors in two phases to avoid observer effect:
-//   Phase 1: Tier 1 (procfs) collectors run alone on a clean system
-//   Phase 2: Tier 2/3 (BCC/eBPF) collectors run in parallel
+//
+//	Phase 1: Tier 1 (procfs) collectors run alone on a clean system
+//	Phase 2: Tier 2/3 (BCC/eBPF) collectors run in parallel
+//
 // Returns a partial report if interrupted (SIGINT/SIGTERM).
 func (o *Orchestrator) Run(ctx context.Context) (*model.Report, error) {
 	// Set up timeouts first, then signal handling
@@ -305,7 +307,7 @@ func (o *Orchestrator) buildMetadata(profile ProfileConfig) model.Metadata {
 
 	meta := model.Metadata{
 		Tool:          "melisai",
-		Version:       "0.1.0",
+		Version:       "0.2.0",
 		SchemaVersion: "1.0.0",
 		Hostname:      hostname,
 		Timestamp:     time.Now().UTC().Format(time.RFC3339),

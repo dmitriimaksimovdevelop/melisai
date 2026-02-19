@@ -23,7 +23,7 @@ melisai implements Brendan Gregg's **USE Method** (Utilization, Saturation, Erro
 - **20 anomaly thresholds** -- warning/critical severity with Gregg's recommended values, delta-based metrics
 - **Health score** -- weighted 0-100 score based on USE methodology
 - **Sysctl recommendations** -- actionable commands with expected impact and source citations
-- **AI prompt generation** -- dynamic, context-aware prompt with 23 known anti-patterns, PID/cgroup-aware
+- **AI prompt generation** -- dynamic, context-aware prompt with 27 known anti-patterns, PID/cgroup-aware
 - **FlameGraph SVG** -- inline SVG generator from folded stacks
 - **Report diff** -- regression/improvement detection with significance classification
 - **Installer** -- auto-detects distro (Ubuntu/Debian/CentOS/Fedora/Arch) and installs BPF tools
@@ -153,6 +153,10 @@ JSON schema designed for machine readability and AI analysis:
   "ai_context": {"prompt": "You are a Linux systems performance expert..."}
 }
 ```
+
+## Example Report
+
+See **[doc/example_report.md](doc/example_report.md)** for a realistic production example — a server with health score 32/100 where a message broker fsync storm on HDD causes cascading I/O saturation across all co-located containers. Includes the full BCC tool output (biolatency, ext4slower, runqlat, cachestat), root cause chain diagram, and prioritized remediation steps.
 
 ## AI Agent Usage Guide
 
