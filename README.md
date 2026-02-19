@@ -17,11 +17,13 @@ melisai implements Brendan Gregg's **USE Method** (Utilization, Saturation, Erro
 - **7 Tier 1 collectors** -- CPU, memory, disk, network, process, container, system
 - **67 BCC tool parsers** -- histogram, tabular events, folded stacks, periodic
 - **Security controls** -- binary verification (root-owned, not world-writable), environment sanitization
-- **USE metrics** -- automatic computation for CPU, memory, disk, network
-- **11 anomaly thresholds** -- warning/critical severity with Gregg's recommended values
+- **Per-application profiling** -- `--pid` targets 24 BCC tools to a specific process, `--cgroup` scopes to a container
+- **Two-phase collection** -- Tier 1 baselines captured before BCC tools run (eliminates observer effect)
+- **USE metrics** -- automatic computation for CPU, memory, disk, network, container resources
+- **20 anomaly thresholds** -- warning/critical severity with Gregg's recommended values, delta-based metrics
 - **Health score** -- weighted 0-100 score based on USE methodology
 - **Sysctl recommendations** -- actionable commands with expected impact and source citations
-- **AI prompt generation** -- dynamic, context-aware prompt with 21 known anti-patterns
+- **AI prompt generation** -- dynamic, context-aware prompt with 23 known anti-patterns, PID/cgroup-aware
 - **FlameGraph SVG** -- inline SVG generator from folded stacks
 - **Report diff** -- regression/improvement detection with significance classification
 - **Installer** -- auto-detects distro (Ubuntu/Debian/CentOS/Fedora/Arch) and installs BPF tools
@@ -52,6 +54,12 @@ sudo melisai collect --profile deep --ai-prompt -o report.json
 
 # Focus on specific subsystems
 sudo melisai collect --profile standard --focus network,disk
+
+# Profile a specific application by PID
+sudo melisai collect --profile standard --pid 12345 --ai-prompt -o app-report.json
+
+# Profile a container by cgroup path
+sudo melisai collect --profile standard --cgroup /sys/fs/cgroup/system.slice/myservice.service -o svc-report.json
 
 # Compare two reports
 melisai diff baseline.json current.json -o diff.json
@@ -93,11 +101,12 @@ sudo melisai install --dry-run
 ```
 cmd/melisai/          CLI entry point (cobra)
 internal/
-  |-- collector/      Tier 1 procfs/sysfs collectors (7) + BCC adapter
+  |-- collector/      Tier 1 procfs/sysfs collectors (7) + BCC adapter (PID injection)
   |-- executor/       BCC tool runner + security + parsers + registry (67 tools)
   |-- ebpf/           BTF detection, CO-RE loader, tier decision
-  |-- model/          Data types, USE metrics, anomaly detection, health score
-  |-- orchestrator/   Parallel execution, signal handling, profiles
+  |-- model/          Data types, USE metrics, anomaly detection (20 rules), health score
+  |-- observer/       PID tracker, observer-effect measurement
+  |-- orchestrator/   Two-phase execution, signal handling, profiles
   |-- output/         JSON formatter, FlameGraph SVG, AI prompt generator
   |-- diff/           Report comparison engine
   |-- installer/      Distro detection, package installation
@@ -174,6 +183,12 @@ ssh root@<server> "melisai collect --profile quick --ai-prompt -o /tmp/report.js
 # For full analysis
 ssh root@<server> "melisai collect --profile standard --ai-prompt -o /tmp/report.json"
 
+# For per-application analysis (24 BCC tools trace only the target PID)
+ssh root@<server> "melisai collect --profile standard --pid $(pgrep myapp) --ai-prompt -o /tmp/app-report.json"
+
+# For container/service analysis
+ssh root@<server> "melisai collect --profile standard --cgroup /sys/fs/cgroup/system.slice/nginx.service -o /tmp/nginx-report.json"
+
 # Download report
 scp root@<server>:/tmp/report.json ./report.json
 ```
@@ -213,8 +228,10 @@ ssh root@<server> "melisai diff /tmp/baseline.json /tmp/current.json -o /tmp/dif
 2. **BCC tools use `-bpfcc` suffix** on Ubuntu/Debian (e.g., `/usr/sbin/runqlat-bpfcc`). melisai handles this automatically.
 3. **Tools that don't accept duration** (e.g., `oomkill`) are killed after `duration + 5s` via context cancellation.
 4. **Tier 3 (native eBPF)** requires compiled `.o` files. Currently only `tcpretrans` has a Tier 3 implementation. If the `.o` file is missing, it falls back to BCC.
-5. **The health score** is a weighted composite: CPU (30%), Memory (25%), Disk (25%), Network (20%). Score < 50 = critical, < 70 = warning.
-6. **All collectors run in parallel** using goroutines. The orchestrator timeout is `profile_duration + 30s`.
+5. **The health score** is a weighted composite: CPU (1.5×), Memory (1.5×), Disk (1.0×), Network (1.0×), Container (1.2×). Score < 50 = critical, < 70 = warning.
+6. **Two-phase collection** -- Tier 1 (procfs) runs first on a clean system, then Tier 2/3 (BCC/eBPF). This ensures CPU/memory/disk/network baselines are uncontaminated by BPF overhead.
+7. **PID targeting** -- `--pid PID` injects `-p PID` into 24 BCC tools that support it. Tier 1 metrics remain system-wide for context. The AI prompt explains the scoping.
+8. **Delta-based metrics** -- network errors and TCP retransmissions use per-second rates (not cumulative counters). Memory errors are not reported (cumulative faults since boot are not actionable).
 
 ### Troubleshooting
 

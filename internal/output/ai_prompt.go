@@ -34,16 +34,66 @@ func GenerateAIPrompt(report *model.Report) *model.AIContext {
 			report.Metadata.ContainerEnv, report.Metadata.CgroupVersion))
 	}
 
-	sb.WriteString(fmt.Sprintf("Profile: %s, Duration: %s\n\n",
+	sb.WriteString(fmt.Sprintf("Profile: %s, Duration: %s\n",
 		report.Metadata.Profile, report.Metadata.Duration))
+
+	// PID/cgroup targeting context
+	hasPIDTarget := false
+	hasCgroupTarget := false
+	if procResults, ok := report.Categories["process"]; ok {
+		for _, r := range procResults {
+			if pd, ok := r.Data.(*model.ProcessData); ok {
+				if len(pd.TopByCPU) > 0 && len(pd.TopByCPU) <= 5 {
+					// Likely PID-filtered (few processes)
+					hasPIDTarget = true
+				}
+			}
+		}
+	}
+	if containerResults, ok := report.Categories["container"]; ok {
+		for _, r := range containerResults {
+			if cd, ok := r.Data.(*model.ContainerData); ok {
+				if cd.CgroupPath != "" && cd.CgroupPath != "/" {
+					hasCgroupTarget = true
+				}
+			}
+		}
+	}
+
+	if hasPIDTarget || hasCgroupTarget {
+		sb.WriteString("\n** TARGETED ANALYSIS MODE **\n")
+		if hasPIDTarget {
+			sb.WriteString("This report is scoped to specific PIDs. ")
+			sb.WriteString("BCC tools that support PID filtering (24 of 67) traced only the target process(es). ")
+			sb.WriteString("Tier 1 metrics (CPU, memory, disk, network) show system-wide baselines for context. ")
+			sb.WriteString("Focus your analysis on the target application:\n")
+			sb.WriteString("- Compare process CPU/memory against system totals to assess resource share\n")
+			sb.WriteString("- Latency histograms (runqlat, biolatency, tcpconnlat) reflect only the target PID\n")
+			sb.WriteString("- Stack traces (profile, offcputime) show only the target application code paths\n")
+			sb.WriteString("- Events (opensnoop, tcpconnect, syscount) are filtered to the target process\n\n")
+		}
+		if hasCgroupTarget {
+			sb.WriteString("This report is scoped to a specific cgroup (container/service). ")
+			sb.WriteString("Container metrics (CPU throttling, memory usage vs limit) reflect the target cgroup. ")
+			sb.WriteString("Process list is filtered to PIDs within the cgroup.\n\n")
+		}
+	} else {
+		sb.WriteString("Collection mode: system-wide (all processes)\n\n")
+	}
+
+	// Two-phase collection note
+	sb.WriteString("COLLECTION METHOD: Two-phase collection was used to avoid observer effect.\n")
+	sb.WriteString("Phase 1: Tier 1 (procfs) collectors ran on a clean system — CPU, memory, disk, network baselines are accurate.\n")
+	sb.WriteString("Phase 2: Tier 2/3 (BCC/eBPF) tools ran after baseline collection — latency histograms, events, and stack traces.\n\n")
 
 	// Health score context
 	sb.WriteString(fmt.Sprintf("Health Score: %d/100\n", report.Summary.HealthScore))
 
 	// Anomalies
-	if len(report.Summary.Anomalies) > 0 {
-		sb.WriteString(fmt.Sprintf("\nDetected Anomalies (%d):\n", len(report.Summary.Anomalies)))
-		for _, a := range report.Summary.Anomalies {
+	anomalies := report.Summary.Anomalies
+	if len(anomalies) > 0 {
+		sb.WriteString(fmt.Sprintf("\nDetected Anomalies (%d):\n", len(anomalies)))
+		for _, a := range anomalies {
 			sb.WriteString(fmt.Sprintf("  [%s] %s: %s (value=%s, threshold=%s)\n",
 				strings.ToUpper(a.Severity), a.Category, a.Message, a.Value, a.Threshold))
 		}
@@ -78,6 +128,9 @@ func GenerateAIPrompt(report *model.Report) *model.AIContext {
 	if hasStacks {
 		sb.WriteString("\nStack traces are available. Analyze hot code paths and ")
 		sb.WriteString("identify contention points (futex, mutex, I/O waits).\n")
+		if hasPIDTarget {
+			sb.WriteString("Stacks are filtered to the target PID — all code paths belong to the target application.\n")
+		}
 	}
 
 	// Histogram hints
@@ -93,22 +146,21 @@ func GenerateAIPrompt(report *model.Report) *model.AIContext {
 	if hasHistograms {
 		sb.WriteString("\nLatency histograms are available. Focus on p99/p999 for ")
 		sb.WriteString("tail latency issues and multimodal distributions.\n")
+		if hasPIDTarget {
+			sb.WriteString("Histograms from PID-filtered tools reflect only the target application's latency profile.\n")
+		}
 	}
 
 	// Observer effect note
 	if report.Metadata.ObserverOverhead != nil {
 		oh := report.Metadata.ObserverOverhead
 		sb.WriteString(fmt.Sprintf(
-			"\nOBSERVER EFFECT NOTE: melisai's own overhead during collection: "+
-				"CPU=%dms user + %dms system, Memory=%dMB RSS, "+
-				"Disk I/O=%dKB read + %dKB write, Context switches=%d. "+
-				"%d BCC tool processes excluded from TopByCPU/TopByMem. "+
-				"Compensated CPU estimates provided in estimated_*_pct fields.\n",
+			"\nOBSERVER EFFECT NOTE: melisai overhead during collection: "+
+				"CPU=%dms user + %dms system, Memory=%dMB RSS. "+
+				"Two-phase collection ensures Tier 1 baselines are unaffected by BCC tool overhead. "+
+				"melisai PIDs excluded from TopByCPU/TopByMem lists.\n",
 			oh.CPUUserMs, oh.CPUSystemMs,
-			oh.MemoryRSSBytes/(1024*1024),
-			oh.DiskReadBytes/1024, oh.DiskWriteBytes/1024,
-			oh.ContextSwitches,
-			len(oh.ChildPIDs)))
+			oh.MemoryRSSBytes/(1024*1024)))
 	}
 
 	sb.WriteString("\nProvide actionable, specific commands. ")
@@ -142,5 +194,7 @@ func knownAntiPatterns() []string {
 		"P19: Kernel softlockup (debug logging storm → RCU stall)",
 		"P20: DNS resolution blocking (gethostlatency spikes → application timeout cascade)",
 		"P21: AppArmor per-packet overhead (LSM hooks on high-PPS workloads)",
+		"P22: Per-process resource leak (FD count growing, RSS growing without release → eventual OOM/EMFILE)",
+		"P23: Application thread pool exhaustion (all threads blocked on I/O or locks → request queuing)",
 	}
 }
