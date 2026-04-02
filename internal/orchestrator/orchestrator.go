@@ -225,7 +225,9 @@ func (o *Orchestrator) runCollectorsParallel(ctx context.Context, collectors []c
 			}
 
 			mu.Lock()
-			results[c.Category()] = append(results[c.Category()], result)
+			if result != nil {
+				results[c.Category()] = append(results[c.Category()], result)
+			}
 			mu.Unlock()
 		}(c)
 	}

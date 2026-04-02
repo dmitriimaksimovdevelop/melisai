@@ -91,7 +91,7 @@ func (c *ProcessCollector) Collect(ctx context.Context, cfg CollectConfig) (*mod
 
 		memPct := 0.0
 		if totalMem > 0 {
-			memPct = float64(p2.rss*4096) / float64(totalMem) * 100
+			memPct = float64(p2.rss*int64(os.Getpagesize())) / float64(totalMem) * 100
 		}
 
 		pi := model.ProcessInfo{

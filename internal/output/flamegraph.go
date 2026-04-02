@@ -2,6 +2,7 @@ package output
 
 import (
 	"fmt"
+	"html"
 	"sort"
 	"strings"
 
@@ -102,7 +103,7 @@ func GenerateFlameGraphSVG(stacks []model.StackTrace, title string) string {
 		if label != "" {
 			sb.WriteString(fmt.Sprintf(
 				`<text x="%.1f" y="%.1f" class="func">%s</text>`,
-				f.xStart+2, y+float64(frameHeight-3), label))
+				f.xStart+2, y+float64(frameHeight-3), html.EscapeString(label)))
 		}
 		sb.WriteString("\n")
 	}
