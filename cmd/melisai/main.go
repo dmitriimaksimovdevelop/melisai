@@ -39,27 +39,34 @@ reports optimized for AI-driven diagnostics and optimization.
 
 Data collection tiers (automatic fallback):
 
-  Tier 1: /proc, /sys, ss, ethtool, dmesg (always works, no root)
-          CPU, memory, disk, network (deep: conntrack, softnet, IRQ,
-          NIC ring buffers, TCP extended stats), process, container.
+  Tier 1: 8 collectors — always works, no root needed
+    CPU       /proc/stat, loadavg, PSI, CFS scheduler params
+    Memory    /proc/meminfo, vmstat (reclaim, compaction, THP), PSI,
+              buddy info, NUMA topology with distance matrix
+    Disk      /proc/diskstats, scheduler, queue depth, PSI
+    Network   /proc/net/dev,snmp,netstat,softnet_stat,sockstat,
+              /proc/softirqs, conntrack, ss, ethtool (30+ sysctls)
+    Process   top-N by CPU/memory, FD count, cgroup filter
+    Container cgroup v1/v2 metrics, K8s/Docker detection
+    System    OS, kernel, dmesg, filesystems, block devices
+    GPU/PCIe  nvidia-smi, PCI→NUMA mapping, cross-NUMA detection
+
   Tier 2: 67 BCC tools — runqlat, biolatency, tcpconnlat, etc.
           (needs root + bcc-tools installed)
   Tier 3: Native eBPF (cilium/ebpf) — tcpretrans kprobe
           (needs root + kernel ≥ 5.8 + BTF)
 
-Network deep diagnostics (Tier 1):
-  - Conntrack table usage and drops (/proc/sys/net/netfilter/)
-  - Softnet per-CPU stats: drops, time_squeeze (/proc/net/softnet_stat)
-  - IRQ distribution: NET_RX delta per CPU (/proc/softirqs)
-  - NIC hardware: driver, speed, MTU, queues, ring buffer, RPS, bond
-  - TCP extended: ListenOverflows, ListenDrops, PruneCalled, TCPAbortOnMemory
-  - UDP stats: RcvbufErrors, SndbufErrors (/proc/net/snmp)
-  - Socket memory: orphans, TCP mem pages (/proc/net/sockstat)
-  - 20+ sysctls: rmem_max, netdev_max_backlog, ip_local_port_range,
-    tcp_fastopen, tcp_notsent_lowat, default_qdisc, and more
+Key diagnostics:
+  Network   conntrack, softnet, IRQ distribution, NIC hardware,
+            TCP extended (ListenOverflows, ZeroWindow, RcvQDrop),
+            UDP RcvbufErrors, accept queue depth, 30+ sysctls
+  Memory    page reclaim rates (direct vs kswapd), compaction stalls,
+            THP splits, NUMA miss ratio, watermark analysis
+  GPU       NVIDIA GPU metrics, PCIe NUMA topology, cross-NUMA alerts
 
-29 anomaly detection rules, health score (0-100), actionable recommendations.
-MCP server for interactive diagnostics from Claude Desktop / Cursor.`,
+37 anomaly detection rules, health score (0-100), actionable recommendations.
+MCP server for interactive diagnostics from Claude Desktop / Cursor.
+Schema v1.1.0 with structured sub-objects for network, memory, GPU data.`,
 		Version: version,
 	}
 
