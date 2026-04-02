@@ -368,6 +368,275 @@ func DefaultThresholds() []Threshold {
 				return fmt.Sprintf("Network errors: %.1f/sec", v)
 			},
 		},
+		// Conntrack table usage
+		{
+			Metric: "conntrack_usage_pct", Category: "network",
+			Warning: 70, Critical: 90,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["network"]; ok {
+					for _, res := range results {
+						if net, ok := res.Data.(*NetworkData); ok {
+							if net.Conntrack != nil && net.Conntrack.Max > 0 {
+								return net.Conntrack.UsagePct, true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("Conntrack table usage: %.1f%%", v)
+			},
+		},
+		// Softnet drops rate (packets dropped by kernel network stack per second)
+		{
+			Metric: "softnet_dropped", Category: "network",
+			Warning: 1, Critical: 100,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["network"]; ok {
+					for _, res := range results {
+						if net, ok := res.Data.(*NetworkData); ok {
+							if net.SoftnetDropRate > 0 {
+								return net.SoftnetDropRate, true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("Softnet packets dropped: %.1f/s (kernel can't keep up with NIC)", v)
+			},
+		},
+		// Listen overflows rate (accept queue full per second)
+		{
+			Metric: "listen_overflows", Category: "network",
+			Warning: 1, Critical: 100,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["network"]; ok {
+					for _, res := range results {
+						if net, ok := res.Data.(*NetworkData); ok {
+							if net.ListenOverflowRate > 0 {
+								return net.ListenOverflowRate, true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("Listen queue overflows: %.1f/s (backlog too small or missing reuseport)", v)
+			},
+		},
+		// NIC RX discards (ring buffer overflow)
+		{
+			Metric: "nic_rx_discards", Category: "network",
+			Warning: 100, Critical: 10000,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["network"]; ok {
+					for _, res := range results {
+						if net, ok := res.Data.(*NetworkData); ok {
+							var maxDiscards int64
+							for _, iface := range net.Interfaces {
+								if iface.RxDiscards > maxDiscards {
+									maxDiscards = iface.RxDiscards
+								}
+							}
+							if maxDiscards > 0 {
+								return float64(maxDiscards), true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("NIC RX discards: %.0f (ring buffer overflow — increase with ethtool -G)", v)
+			},
+		},
+		// CLOSE_WAIT sockets (application not closing connections)
+		{
+			Metric: "tcp_close_wait", Category: "network",
+			Warning: 1, Critical: 100,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["network"]; ok {
+					for _, res := range results {
+						if net, ok := res.Data.(*NetworkData); ok && net.TCP != nil {
+							if net.TCP.CloseWaitCount > 0 {
+								return float64(net.TCP.CloseWaitCount), true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("CLOSE_WAIT sockets: %.0f (application not closing connections after remote FIN)", v)
+			},
+		},
+		// Softnet time squeeze rate (NAPI budget exhausted per second)
+		{
+			Metric: "softnet_time_squeeze", Category: "network",
+			Warning: 1, Critical: 100,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["network"]; ok {
+					for _, res := range results {
+						if net, ok := res.Data.(*NetworkData); ok {
+							if net.SoftnetSqueezeRate > 0 {
+								return net.SoftnetSqueezeRate, true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("Softnet time_squeeze: %.1f/s (NAPI budget exhausted — increase netdev_budget)", v)
+			},
+		},
+		// TCPAbortOnMemory rate (connections aborted per second due to memory pressure)
+		{
+			Metric: "tcp_abort_on_memory", Category: "network",
+			Warning: 0.1, Critical: 1,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["network"]; ok {
+					for _, res := range results {
+						if net, ok := res.Data.(*NetworkData); ok {
+							if net.TCPAbortMemRate > 0 {
+								return net.TCPAbortMemRate, true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("TCPAbortOnMemory: %.2f/s (connections killed by kernel due to TCP memory pressure)", v)
+			},
+		},
+		// IRQ imbalance (uneven NET_RX distribution across CPUs)
+		{
+			Metric: "irq_imbalance", Category: "network",
+			Warning: 5, Critical: 20,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["network"]; ok {
+					for _, res := range results {
+						if net, ok := res.Data.(*NetworkData); ok && len(net.IRQDistribution) > 1 {
+							var maxDelta, minDelta int64
+							minDelta = net.IRQDistribution[0].NetRxDelta
+							for _, d := range net.IRQDistribution {
+								if d.NetRxDelta > maxDelta {
+									maxDelta = d.NetRxDelta
+								}
+								if d.NetRxDelta < minDelta {
+									minDelta = d.NetRxDelta
+								}
+							}
+							// Skip if traffic is too low to be meaningful
+							if maxDelta < 100 {
+								return 0, false
+							}
+							if minDelta > 0 {
+								ratio := float64(maxDelta) / float64(minDelta)
+								return ratio, true
+							}
+							// min is 0 but max >= 100 — extreme imbalance
+							return float64(maxDelta), true
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("IRQ imbalance: max/min ratio %.1fx (enable RPS or configure IRQ affinity)", v)
+			},
+		},
+		// UDP receive buffer error rate (drops per second)
+		{
+			Metric: "udp_rcvbuf_errors", Category: "network",
+			Warning: 1, Critical: 100,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["network"]; ok {
+					for _, res := range results {
+						if net, ok := res.Data.(*NetworkData); ok {
+							if net.UDPRcvbufErrRate > 0 {
+								return net.UDPRcvbufErrRate, true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("UDP receive buffer errors: %.1f/s (increase rmem_max and application SO_RCVBUF)", v)
+			},
+		},
+		// TCP Recv-Q drops (application not reading ESTABLISHED sockets fast enough)
+		{
+			Metric: "tcp_rcvq_drop", Category: "network",
+			Warning: 1, Critical: 100,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["network"]; ok {
+					for _, res := range results {
+						if net, ok := res.Data.(*NetworkData); ok {
+							if net.TCPRcvQDropRate > 0 {
+								return net.TCPRcvQDropRate, true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("TCP Recv-Q drops: %.1f/s (application not reading from sockets fast enough)", v)
+			},
+		},
+		// TCP Zero Window drops
+		{
+			Metric: "tcp_zero_window_drop", Category: "network",
+			Warning: 1, Critical: 50,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["network"]; ok {
+					for _, res := range results {
+						if net, ok := res.Data.(*NetworkData); ok {
+							if net.TCPZeroWindowDropRate > 0 {
+								return net.TCPZeroWindowDropRate, true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("TCP zero-window drops: %.1f/s (receiver advertised window=0, app not consuming data)", v)
+			},
+		},
+		// Listen queue saturation (accept queue filling up)
+		{
+			Metric: "listen_queue_saturation", Category: "network",
+			Warning: 70, Critical: 90,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["network"]; ok {
+					for _, res := range results {
+						if net, ok := res.Data.(*NetworkData); ok {
+							var maxFill float64
+							for _, ls := range net.ListenSockets {
+								if ls.FillPct > maxFill {
+									maxFill = ls.FillPct
+								}
+							}
+							if maxFill > 0 {
+								return maxFill, true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("Listen queue fill: %.0f%% (accept queue near capacity — add SO_REUSEPORT or more worker threads)", v)
+			},
+		},
 	}
 }
 

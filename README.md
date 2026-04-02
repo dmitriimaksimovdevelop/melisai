@@ -31,7 +31,7 @@ Most performance tools give you raw numbers. melisai gives you **a diagnosis**.
 - Runs Brendan Gregg's [USE Method](https://www.brendangregg.com/usemethod.html) automatically
 - Flags anomalies with severity (warning/critical) using field-tested thresholds
 - Computes a single **health score** (0-100) so an AI agent can decide what to do next
-- Generates a context-aware **AI prompt** with 23 known anti-patterns
+- Generates a context-aware **AI prompt** with 27 known anti-patterns
 - Works over **MCP** (Model Context Protocol) so Claude/Cursor can diagnose a server interactively
 
 ---
@@ -82,7 +82,7 @@ melisai mcp   # starts stdio JSON-RPC server
 | `get_health` | Quick 0-100 score + anomalies. Tier 1 only, no root needed | ~1s |
 | `collect_metrics` | Full profile with all BCC/eBPF tools. Args: `profile`, `focus`, `pid` | 10s-60s |
 | `explain_anomaly` | Root causes + recommendations for a specific anomaly ID | instant |
-| `list_anomalies` | All 23 detectable anomaly metric IDs with descriptions | instant |
+| `list_anomalies` | All 29 detectable anomaly metric IDs with descriptions | instant |
 
 ### Typical workflow
 
@@ -108,7 +108,9 @@ Agent                              melisai
 melisai collects metrics at three tiers with automatic fallback:
 
 ```
-Tier 1: /proc, /sys, ss, dmesg          ← always works, no root
+Tier 1: /proc, /sys, ss, ethtool, dmesg  ← always works, no root
+        Includes deep network diagnostics: conntrack, softnet,
+        IRQ distribution, NIC hardware, TCP extended stats
 Tier 2: 67 BCC tools (runqlat, bio...)   ← root + bcc-tools
 Tier 3: native eBPF (cilium/ebpf)       ← root + kernel ≥ 5.8 + BTF
 ```
@@ -126,7 +128,7 @@ The report includes:
 | `summary.resources` | USE metrics per resource (utilization, saturation, errors) |
 | `summary.recommendations[]` | Copy-paste sysctl commands with citations |
 | `categories.*` | Raw data: histograms, events, stack traces per subsystem |
-| `ai_context.prompt` | Dynamic prompt with system context and 23 anti-patterns |
+| `ai_context.prompt` | Dynamic prompt with system context and 27 anti-patterns |
 
 ---
 
@@ -212,7 +214,7 @@ Abbreviated JSON:
 
 ## Anomaly Detection
 
-20 threshold rules based on Gregg's recommended values:
+29 threshold rules based on Gregg's recommended values:
 
 | Metric | Warning | Critical | Source |
 |--------|---------|----------|--------|
@@ -229,7 +231,127 @@ Abbreviated JSON:
 | biolatency_p99_ssd | 5ms | 25ms | BCC histogram |
 | biolatency_p99_hdd | 50ms | 200ms | BCC histogram |
 | cpu_throttling | 100 | 1000 periods | cgroup cpu.stat |
+| conntrack_usage_pct | 70% | 90% | /proc/sys/net/netfilter/ |
+| softnet_dropped | 1 | 10 | /proc/net/softnet_stat |
+| listen_overflows | 1 | 100 | /proc/net/netstat |
+| nic_rx_discards | 100 | 10000 | ethtool -S |
+| tcp_close_wait | 1 | 100 | ss |
+| softnet_time_squeeze | 1 | 100 | /proc/net/softnet_stat |
+| tcp_abort_on_memory | 1 | 10 | /proc/net/netstat |
+| irq_imbalance | 5x ratio | 20x ratio | /proc/softirqs |
+| udp_rcvbuf_errors | 1 | 100 | /proc/net/snmp |
 | ... and 7 more (PSI, cache miss, DNS, container memory, network errors) | | | |
+
+---
+
+## Manual Usage (without AI)
+
+melisai works perfectly as a standalone CLI tool — no AI agent required.
+
+### Getting Help
+
+```bash
+# General help — all commands and capabilities
+melisai --help
+
+# Detailed help for collect (profiles, flags, examples)
+melisai collect --help
+
+# Help for other commands
+melisai diff --help
+melisai install --help
+melisai mcp --help
+melisai capabilities --help
+```
+
+### Typical Manual Workflow
+
+```bash
+# 1. Quick health check — see if something is obviously wrong
+sudo melisai collect --profile quick -o quick.json
+
+# 2. Read the summary
+cat quick.json | python3 -m json.tool | head -30
+# or use jq:
+jq '.summary' quick.json
+
+# 3. Check health score and anomalies
+jq '.summary.health_score' quick.json                     # 0-100
+jq '.summary.anomalies[]' quick.json                      # what's wrong
+jq '.summary.recommendations[].title' quick.json          # what to fix
+
+# 4. Deep dive into network
+sudo melisai collect --profile standard --focus network -o net.json
+jq '.categories.network[0].data.conntrack' net.json       # conntrack usage
+jq '.categories.network[0].data.softnet_stats' net.json   # per-CPU drops
+jq '.categories.network[0].data.listen_overflows' net.json # accept queue
+
+# 5. Profile a specific process
+sudo melisai collect --profile standard --pid $(pgrep nginx) -o nginx.json
+
+# 6. Compare before/after a change
+sudo melisai collect --profile quick -o before.json
+# ... apply your fix ...
+sudo melisai collect --profile quick -o after.json
+melisai diff before.json after.json                        # human-readable
+melisai diff before.json after.json -o diff.json           # JSON diff
+
+# 7. Check what tools are available
+melisai capabilities
+```
+
+### Interpreting the Report
+
+The JSON report has four main sections:
+
+| Section | How to read it |
+|---------|----------------|
+| `summary.health_score` | 90-100 = healthy, 70-89 = some issues, <70 = needs attention |
+| `summary.anomalies` | Each has `severity` (warning/critical), `metric`, `message` |
+| `summary.recommendations` | Copy-paste the `commands` field to fix issues |
+| `categories.network[0].data` | Raw metrics — interfaces, TCP, conntrack, softnet, etc. |
+
+### Network Deep Diagnostics — Manual Inspection
+
+```bash
+# Conntrack table usage
+jq '.categories.network[0].data.conntrack' report.json
+# {"count": 15000, "max": 65536, "usage_pct": 22.9}
+
+# Softnet drops (per-CPU) — any "dropped" > 0 is bad
+jq '.categories.network[0].data.softnet_stats[] | select(.dropped > 0)' report.json
+
+# Listen overflows (accept queue full)
+jq '.categories.network[0].data | {listen_overflows, listen_drops}' report.json
+
+# NIC ring buffer (is it maxed out?)
+jq '.categories.network[0].data.interfaces[] | {name, driver, ring_rx_current, ring_rx_max, rx_discards}' report.json
+
+# IRQ imbalance (check if one CPU handles all network interrupts)
+jq '.categories.network[0].data.irq_distribution' report.json
+
+# TCP memory pressure
+jq '.categories.network[0].data | {prune_called, tcp_abort_on_memory, tcp_mem}' report.json
+```
+
+### Useful jq One-Liners
+
+```bash
+# All critical anomalies
+jq '.summary.anomalies[] | select(.severity == "critical")' report.json
+
+# All recommendations with commands
+jq '.summary.recommendations[] | {title, commands}' report.json
+
+# USE metrics for all resources
+jq '.summary.resources' report.json
+
+# Top CPU-consuming processes
+jq '.categories.process[0].data.top_by_cpu[:5]' report.json
+
+# BCC histogram percentiles
+jq '.categories.cpu[].histograms[]? | {name, p50, p99, max}' report.json
+```
 
 ---
 

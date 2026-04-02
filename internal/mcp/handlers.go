@@ -486,6 +486,141 @@ Network interface is reporting errors (CRC, frame, carrier errors).
 - Try replacing cable or switching ports.
 - Check dmesg for NIC error messages.`,
 
+	"conntrack_usage_pct": `**Conntrack Table Pressure**
+The connection tracking table (nf_conntrack) is approaching capacity.
+**Root Causes:**
+- Too many concurrent connections for the configured conntrack_max
+- Aggressive conntrack timeouts not configured (established default is 5 days)
+- DDoS or SYN flood filling the table
+**Recommendations:**
+- Increase nf_conntrack_max: sysctl -w net.netfilter.nf_conntrack_max=<current*2>
+- Reduce conntrack timeouts for faster cleanup
+- Consider NOTRACK for traffic that doesn't need stateful tracking`,
+
+	"softnet_dropped": `**Softnet Packet Drops**
+The kernel is dropping packets because softirq processing can't keep up with NIC ingress rate.
+**Root Causes:**
+- NIC PPS exceeds single CPU processing capacity without RPS
+- netdev_budget too low for traffic volume
+- IRQ affinity misconfigured (all interrupts on one CPU)
+**Recommendations:**
+- Enable RPS to distribute packet processing across CPUs
+- Increase net.core.netdev_budget (default 300, recommend 4096)
+- Pin IRQ affinity 1:1 (queue N → CPU N)`,
+
+	"listen_overflows": `**Listen Queue Overflows**
+The TCP accept queue is full — new SYN packets are being dropped.
+**Root Causes:**
+- nginx/application listen backlog too small (default 511)
+- Application not calling accept() fast enough
+- Missing SO_REUSEPORT (single accept queue for all workers)
+**Recommendations:**
+- Add 'reuseport' to nginx listen directive: listen 80 reuseport;
+- Increase backlog: listen 80 reuseport backlog=8192;
+- Ensure net.core.somaxconn >= backlog value`,
+
+	"nic_rx_discards": `**NIC Ring Buffer Overflow (rx_discards)**
+The NIC is dropping packets at hardware level because the receive ring buffer is full.
+**Root Causes:**
+- Ring buffer too small for traffic burst rate
+- CPU not processing packets fast enough (softirq bottleneck)
+- No RPS/RSS distributing packets across CPUs
+**Recommendations:**
+- Increase ring buffer: ethtool -G <iface> rx <max>
+- Increase netdev_budget for faster softirq processing
+- Enable RPS or pin IRQ affinity for even distribution`,
+
+	"tcp_close_wait": `**CLOSE_WAIT Socket Accumulation**
+Sockets stuck in CLOSE_WAIT state — the remote peer closed the connection but the application never called close().
+**Root Causes:**
+- Application bug: not closing sockets after use (missing defer conn.Close())
+- Connection pool leak: borrowed connections never returned
+- Blocked application thread: close() never reached due to deadlock or exception
+**Recommendations:**
+- Identify the leaking process: ss -tnp state close-wait
+- Review application code for missing socket close() calls
+- Add connection pool timeouts and leak detection`,
+
+	"softnet_time_squeeze": `**Softnet Time Squeeze**
+The kernel NAPI polling budget was exhausted before all packets were processed.
+**Root Causes:**
+- netdev_budget too low for packet rate (default 300)
+- CPU spending too much time in other softirqs
+- High PPS on few CPUs without RPS distribution
+**Recommendations:**
+- Increase net.core.netdev_budget (recommend 600-4096)
+- Increase net.core.netdev_budget_usecs (recommend 4000-8000)
+- Enable RPS to distribute packet processing across CPUs`,
+
+	"tcp_abort_on_memory": `**TCP Connections Aborted Due to Memory Pressure**
+The kernel is killing TCP connections because it ran out of TCP buffer memory.
+**Root Causes:**
+- tcp_mem limits too low for connection count
+- Too many sockets with large receive buffers
+- Memory leak in connection handling
+**Recommendations:**
+- Increase tcp_mem: sysctl -w net.ipv4.tcp_mem='1048576 2097152 4194304'
+- Check /proc/net/sockstat for TCP mem usage
+- Review application for connection leaks`,
+
+	"irq_imbalance": `**Network IRQ Imbalance**
+Network interrupts (NET_RX) are heavily concentrated on one or few CPUs.
+**Root Causes:**
+- NIC has single RX queue (or RSS not configured)
+- IRQ affinity pinned to single CPU
+- RPS (Receive Packet Steering) not enabled
+**Recommendations:**
+- Enable RPS: echo <cpu_mask> > /sys/class/net/<dev>/queues/rx-*/rps_cpus
+- Configure IRQ affinity: spread interrupts across CPUs (irqbalance)
+- Check if NIC supports multi-queue RSS (ethtool -l)`,
+
+	"udp_rcvbuf_errors": `**UDP Receive Buffer Overflow**
+The kernel is dropping UDP packets because the socket receive buffer is full.
+**Root Causes:**
+- Application not reading from socket fast enough
+- net.core.rmem_max too low (default 212992 bytes)
+- Application SO_RCVBUF not large enough
+- Bursty traffic overwhelming buffer (common in DNS, statsd, syslog)
+**Recommendations:**
+- Increase rmem_max: sysctl -w net.core.rmem_max=26214400
+- Application should set SO_RCVBUF to larger value
+- Consider multiple listener threads or SO_REUSEPORT`,
+
+	"tcp_rcvq_drop": `**TCP Receive Queue Drops**
+Packets are being dropped because the receiving application is not reading data fast enough from ESTABLISHED sockets.
+**Root Causes:**
+- Application blocked on disk I/O, locks, or compute while data arrives
+- Single-threaded processing can't keep up with incoming data rate
+- GC pauses (Java/Go) stalling the read loop
+**Recommendations:**
+- Profile the application: is read() blocking on disk, locks, or compute?
+- Increase tcp_rmem max for more buffer headroom
+- Add more worker threads or use non-blocking I/O`,
+
+	"tcp_zero_window_drop": `**TCP Zero Window Drops**
+The receiver advertised a window of 0 bytes (meaning "stop sending, I'm full"), and the sender dropped packets.
+**Root Causes:**
+- Application not calling read()/recv() fast enough
+- Receive buffer full (tcp_rmem max too small or app holding data)
+- Processing bottleneck in the application (CPU, disk, locks)
+**Recommendations:**
+- Increase tcp_rmem max: sysctl -w net.ipv4.tcp_rmem='4096 131072 16777216'
+- Profile application to find the read() bottleneck
+- Check ss -tnm for per-socket buffer usage`,
+
+	"listen_queue_saturation": `**Listen Queue Saturation**
+The TCP accept queue for a listening socket is filling up. When full, new SYN packets are dropped (ListenOverflows).
+**Root Causes:**
+- Application not calling accept() fast enough (single-threaded accept loop)
+- No SO_REUSEPORT: all connections funnel through one accept queue
+- Burst of new connections overwhelming the backlog
+**Recommendations:**
+- Enable SO_REUSEPORT: each worker gets its own accept queue
+  - nginx: listen 80 reuseport;
+  - Go: set SO_REUSEPORT via ListenConfig.Control
+- Increase backlog: net.core.somaxconn=65535
+- Add more accept() worker threads`,
+
 	"biolatency_p99_ssd": `**High SSD I/O Latency (p99)**
 Block I/O p99 latency for SSDs exceeds expected range.
 **Root Causes:**
