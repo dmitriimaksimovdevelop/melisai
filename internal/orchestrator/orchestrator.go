@@ -309,7 +309,7 @@ func (o *Orchestrator) buildMetadata(profile ProfileConfig) model.Metadata {
 
 	meta := model.Metadata{
 		Tool:          "melisai",
-		Version:       "0.2.0",
+		Version:       "0.4.1",
 		SchemaVersion: "1.1.0",
 		Hostname:      hostname,
 		Timestamp:     time.Now().UTC().Format(time.RFC3339),
