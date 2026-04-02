@@ -10,9 +10,9 @@
 ```
 $ sudo melisai collect --profile quick -o report.json
 
-  melisai v0.1.1 | profile=quick | duration=10s
+  melisai v0.4.1 | profile=quick | duration=10s
 
-  Tier 1 (procfs)  ████████████████████████████████████████ 7/7   2.1s
+  Tier 1 (procfs)  ████████████████████████████████████████ 8/8   2.1s
   Tier 2 (BCC)     ████████████████████████████████████████ 4/4  10.3s
 
   Health Score:  68 / 100  ⚠️
@@ -83,7 +83,7 @@ melisai mcp   # starts stdio JSON-RPC server
 | `get_health` | Quick 0-100 score + anomalies. Tier 1 only, no root needed | ~1s |
 | `collect_metrics` | Full profile with all BCC/eBPF tools. Args: `profile`, `focus`, `pid` | 10s-60s |
 | `explain_anomaly` | Root causes + recommendations for a specific anomaly ID | instant |
-| `list_anomalies` | All 29 detectable anomaly metric IDs with descriptions | instant |
+| `list_anomalies` | All 37 detectable anomaly metric IDs with descriptions | instant |
 
 ### Typical workflow
 
@@ -109,9 +109,9 @@ Agent                              melisai
 melisai collects metrics at three tiers with automatic fallback:
 
 ```
-Tier 1: /proc, /sys, ss, ethtool, dmesg  ← always works, no root
-        Includes deep network diagnostics: conntrack, softnet,
-        IRQ distribution, NIC hardware, TCP extended stats
+Tier 1: 8 collectors (/proc, /sys, ss, ethtool, nvidia-smi, dmesg)
+        Network deep diagnostics, page reclaim & THP tracking,
+        NUMA topology analysis, GPU/PCIe cross-NUMA detection
 Tier 2: 67 BCC tools (runqlat, bio...)   ← root + bcc-tools
 Tier 3: native eBPF (cilium/ebpf)       ← root + kernel ≥ 5.8 + BTF
 ```
@@ -172,7 +172,7 @@ Abbreviated JSON:
 ```json
 {
   "metadata": {
-    "tool": "melisai", "schema_version": "1.0.0",
+    "tool": "melisai", "schema_version": "1.1.0",
     "hostname": "prod-web-01", "kernel_version": "6.8.0-90-generic",
     "cpus": 20, "memory_gb": 62, "profile": "standard", "duration": "30s"
   },
@@ -203,7 +203,7 @@ Abbreviated JSON:
 | Subsystem | Tools |
 |-----------|-------|
 | **CPU** (10) | runqlat, runqlen, cpudist, hardirqs, softirqs, runqslower, cpufreq, cpuunclaimed, llcstat, funccount |
-| **Disk** (20) | biolatency, biosnoop, biotop, bitesize, ext4slower, ext4dist, fileslower, filelife, mountsnoop, btrfsslower, btrfsdist, xfsslower, xfsdist, nfsslower, nfsdist, zfsslower, zfsdist, mdflush, scsilatency, nvmelatency, vfsstat |
+| **Disk** (21) | biolatency, biosnoop, biotop, bitesize, ext4slower, ext4dist, fileslower, filelife, mountsnoop, btrfsslower, btrfsdist, xfsslower, xfsdist, nfsslower, nfsdist, zfsslower, zfsdist, mdflush, scsilatency, nvmelatency, vfsstat |
 | **Memory** (7) | cachestat, oomkill, drsnoop, shmsnoop, numamove, memleak, slabratetop |
 | **Network** (14) | tcpconnlat, tcpretrans, tcprtt, tcpdrop, tcpstates, tcpconnect, tcpaccept, tcplife, udpconnect, sofdsnoop, sockstat, skbdrop, tcpsynbl, gethostlatency |
 | **Process** (9) | execsnoop, opensnoop, killsnoop, threadsnoop, syncsnoop, exitsnoop, statsnoop, capable, syscount |
@@ -215,7 +215,7 @@ Abbreviated JSON:
 
 ## Anomaly Detection
 
-29 threshold rules based on Gregg's recommended values:
+37 threshold rules based on Gregg's recommended values:
 
 | Metric | Warning | Critical | Source |
 |--------|---------|----------|--------|
@@ -233,15 +233,23 @@ Abbreviated JSON:
 | biolatency_p99_hdd | 50ms | 200ms | BCC histogram |
 | cpu_throttling | 100 | 1000 periods | cgroup cpu.stat |
 | conntrack_usage_pct | 70% | 90% | /proc/sys/net/netfilter/ |
-| softnet_dropped | 1 | 10 | /proc/net/softnet_stat |
+| softnet_dropped | 1/s | 100/s | /proc/net/softnet_stat (rate) |
 | listen_overflows | 1 | 100 | /proc/net/netstat |
 | nic_rx_discards | 100 | 10000 | ethtool -S |
 | tcp_close_wait | 1 | 100 | ss |
 | softnet_time_squeeze | 1 | 100 | /proc/net/softnet_stat |
-| tcp_abort_on_memory | 1 | 10 | /proc/net/netstat |
+| tcp_abort_on_memory | 0.1/s | 1/s | /proc/net/netstat (rate) |
 | irq_imbalance | 5x ratio | 20x ratio | /proc/softirqs |
-| udp_rcvbuf_errors | 1 | 100 | /proc/net/snmp |
-| ... and 7 more (PSI, cache miss, DNS, container memory, network errors) | | | |
+| udp_rcvbuf_errors | 1/s | 100/s | /proc/net/snmp (rate) |
+| tcp_rcvq_drop | 1/s | 100/s | /proc/net/netstat (rate) |
+| tcp_zero_window_drop | 1/s | 50/s | /proc/net/netstat (rate) |
+| listen_queue_saturation | 70% | 90% | ss -tnl fill % |
+| direct_reclaim_rate | 10/s | 1000/s | /proc/vmstat (rate) |
+| compaction_stall_rate | 1/s | 100/s | /proc/vmstat (rate) |
+| thp_split_rate | 1/s | 100/s | /proc/vmstat (rate) |
+| numa_miss_ratio | 5% | 20% | /sys/devices/system/node |
+| gpu_nic_cross_numa | 1 pair | 1 pair | sysfs PCI NUMA |
+| ... and 4 more (PSI, cache miss, DNS, container) | | | |
 
 ---
 
@@ -366,7 +374,7 @@ jq '.categories.cpu[].histograms[]? | {name, p50, p99, max}' report.json
 ```
 cmd/melisai/           CLI (cobra) + MCP subcommand
 internal/
-  ├── collector/       7 Tier 1 collectors + BCC adapter
+  ├── collector/       8 Tier 1 collectors + BCC adapter + GPU/PCIe
   ├── executor/        BCC runner, security, 67 parsers, registry
   ├── ebpf/            Native eBPF loader (cilium/ebpf, CO-RE)
   ├── mcp/             MCP server (4 tools, stdio JSON-RPC)
