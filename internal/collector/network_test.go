@@ -136,14 +136,14 @@ func TestParseSNMP(t *testing.T) {
 		t.Errorf("OutRsts = %d, want 300", data.TCP.OutRsts)
 	}
 	// UDP stats parsed in same pass
-	if data.UDPRcvbufErrors != 42 {
-		t.Errorf("UDPRcvbufErrors = %d, want 42", data.UDPRcvbufErrors)
+	if data.UDP.RcvbufErrors != 42 {
+		t.Errorf("UDPRcvbufErrors = %d, want 42", data.UDP.RcvbufErrors)
 	}
-	if data.UDPSndbufErrors != 3 {
-		t.Errorf("UDPSndbufErrors = %d, want 3", data.UDPSndbufErrors)
+	if data.UDP.SndbufErrors != 3 {
+		t.Errorf("UDPSndbufErrors = %d, want 3", data.UDP.SndbufErrors)
 	}
-	if data.UDPInErrors != 10 {
-		t.Errorf("UDPInErrors = %d, want 10", data.UDPInErrors)
+	if data.UDP.InErrors != 10 {
+		t.Errorf("UDPInErrors = %d, want 10", data.UDP.InErrors)
 	}
 }
 
@@ -513,20 +513,20 @@ func TestParseNetstat(t *testing.T) {
 	data := &model.NetworkData{}
 	c.parseNetstat(data)
 
-	if data.ListenOverflows != 150 {
-		t.Errorf("ListenOverflows = %d, want 150", data.ListenOverflows)
+	if data.TCPExt.ListenOverflows != 150 {
+		t.Errorf("ListenOverflows = %d, want 150", data.TCPExt.ListenOverflows)
 	}
-	if data.ListenDrops != 200 {
-		t.Errorf("ListenDrops = %d, want 200", data.ListenDrops)
+	if data.TCPExt.ListenDrops != 200 {
+		t.Errorf("ListenDrops = %d, want 200", data.TCPExt.ListenDrops)
 	}
-	if data.TCPAbortOnMemory != 7 {
-		t.Errorf("TCPAbortOnMemory = %d, want 7", data.TCPAbortOnMemory)
+	if data.TCPExt.TCPAbortOnMemory != 7 {
+		t.Errorf("TCPAbortOnMemory = %d, want 7", data.TCPExt.TCPAbortOnMemory)
 	}
-	if data.TCPOFOQueue != 500 {
-		t.Errorf("TCPOFOQueue = %d, want 500", data.TCPOFOQueue)
+	if data.TCPExt.TCPOFOQueue != 500 {
+		t.Errorf("TCPOFOQueue = %d, want 500", data.TCPExt.TCPOFOQueue)
 	}
-	if data.PruneCalled != 42 {
-		t.Errorf("PruneCalled = %d, want 42", data.PruneCalled)
+	if data.TCPExt.PruneCalled != 42 {
+		t.Errorf("PruneCalled = %d, want 42", data.TCPExt.PruneCalled)
 	}
 }
 
@@ -534,9 +534,9 @@ func TestParseNetstatMissing(t *testing.T) {
 	c := NewNetworkCollector("/nonexistent/path")
 	data := &model.NetworkData{}
 	c.parseNetstat(data)
-	// Should not panic; all values remain 0.
-	if data.ListenOverflows != 0 {
-		t.Errorf("ListenOverflows = %d, want 0", data.ListenOverflows)
+	// Should not panic; TCPExt should be nil when file is missing.
+	if data.TCPExt != nil {
+		t.Errorf("TCPExt = %v, want nil (file missing)", data.TCPExt)
 	}
 }
 
@@ -584,17 +584,17 @@ func TestParseSockstat(t *testing.T) {
 	data := &model.NetworkData{}
 	c.parseSockstat(data)
 
-	if data.TCPSocketsInUse != 500 {
-		t.Errorf("TCPSocketsInUse = %d, want 500", data.TCPSocketsInUse)
+	if data.SocketMem.TCPInUse != 500 {
+		t.Errorf("TCPSocketsInUse = %d, want 500", data.SocketMem.TCPInUse)
 	}
-	if data.TCPOrphans != 12 {
-		t.Errorf("TCPOrphans = %d, want 12", data.TCPOrphans)
+	if data.SocketMem.TCPOrphans != 12 {
+		t.Errorf("TCPOrphans = %d, want 12", data.SocketMem.TCPOrphans)
 	}
-	if data.TCPMemPages != 150 {
-		t.Errorf("TCPMemPages = %d, want 150", data.TCPMemPages)
+	if data.SocketMem.TCPMemPages != 150 {
+		t.Errorf("TCPMemPages = %d, want 150", data.SocketMem.TCPMemPages)
 	}
-	if data.UDPSocketsInUse != 50 {
-		t.Errorf("UDPSocketsInUse = %d, want 50", data.UDPSocketsInUse)
+	if data.SocketMem.UDPInUse != 50 {
+		t.Errorf("UDPSocketsInUse = %d, want 50", data.SocketMem.UDPInUse)
 	}
 }
 
@@ -602,8 +602,8 @@ func TestParseSockstatMissing(t *testing.T) {
 	c := NewNetworkCollector("/nonexistent/path")
 	data := &model.NetworkData{}
 	c.parseSockstat(data)
-	if data.TCPSocketsInUse != 0 {
-		t.Errorf("TCPSocketsInUse = %d, want 0", data.TCPSocketsInUse)
+	if data.SocketMem != nil {
+		t.Errorf("SocketMem = %v, want nil (file missing)", data.SocketMem)
 	}
 }
 

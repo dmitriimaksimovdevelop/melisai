@@ -8,12 +8,12 @@ func TestTCPBufferRecommendation(t *testing.T) {
 	report := &Report{
 		Categories: map[string][]Result{
 			"network": {
-				{Data: &NetworkData{
+				{Data: &NetworkData{Sysctls: &NetworkSysctls{
 					// max=2097152 < 4MB => should trigger rmem recommendation
 					TCPRmem: "4096 87380 2097152",
 					// max=6291456 > 4MB => should NOT trigger wmem recommendation
 					TCPWmem: "4096 65536 6291456",
-				}},
+				}}},
 			},
 		},
 	}
@@ -50,8 +50,8 @@ func TestTCPTWReuseRecommendation(t *testing.T) {
 		Categories: map[string][]Result{
 			"network": {
 				{Data: &NetworkData{
-					TCPTWReuse: 0,
-					TCP:        &TCPStats{TimeWaitCount: 5000},
+					Sysctls: &NetworkSysctls{TCPTWReuse: 0},
+					TCP:     &TCPStats{TimeWaitCount: 5000},
 				}},
 			},
 		},
@@ -80,8 +80,8 @@ func TestTCPTWReuseNotTriggeredWhenEnabled(t *testing.T) {
 		Categories: map[string][]Result{
 			"network": {
 				{Data: &NetworkData{
-					TCPTWReuse: 1,
-					TCP:        &TCPStats{TimeWaitCount: 5000},
+					Sysctls: &NetworkSysctls{TCPTWReuse: 1},
+					TCP:     &TCPStats{TimeWaitCount: 5000},
 				}},
 			},
 		},
@@ -288,9 +288,9 @@ func TestTCPMaxSynBacklogRecommendation(t *testing.T) {
 	report := &Report{
 		Categories: map[string][]Result{
 			"network": {
-				{Data: &NetworkData{
+				{Data: &NetworkData{Sysctls: &NetworkSysctls{
 					TCPMaxSynBacklog: 128,
-				}},
+				}}},
 			},
 		},
 	}
@@ -317,9 +317,9 @@ func TestTCPMaxSynBacklogNoRecommendationWhenSufficient(t *testing.T) {
 	report := &Report{
 		Categories: map[string][]Result{
 			"network": {
-				{Data: &NetworkData{
+				{Data: &NetworkData{Sysctls: &NetworkSysctls{
 					TCPMaxSynBacklog: 8192,
-				}},
+				}}},
 			},
 		},
 	}

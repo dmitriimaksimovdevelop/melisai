@@ -395,9 +395,9 @@ func DefaultThresholds() []Threshold {
 			Evaluator: func(r *Report) (float64, bool) {
 				if results, ok := r.Categories["network"]; ok {
 					for _, res := range results {
-						if net, ok := res.Data.(*NetworkData); ok {
-							if net.SoftnetDropRate > 0 {
-								return net.SoftnetDropRate, true
+						if net, ok := res.Data.(*NetworkData); ok && net.Softnet != nil {
+							if net.Softnet.DropRate > 0 {
+								return net.Softnet.DropRate, true
 							}
 						}
 					}
@@ -415,9 +415,9 @@ func DefaultThresholds() []Threshold {
 			Evaluator: func(r *Report) (float64, bool) {
 				if results, ok := r.Categories["network"]; ok {
 					for _, res := range results {
-						if net, ok := res.Data.(*NetworkData); ok {
-							if net.ListenOverflowRate > 0 {
-								return net.ListenOverflowRate, true
+						if net, ok := res.Data.(*NetworkData); ok && net.TCPExt != nil {
+							if net.TCPExt.ListenOverflowRate > 0 {
+								return net.TCPExt.ListenOverflowRate, true
 							}
 						}
 					}
@@ -481,9 +481,9 @@ func DefaultThresholds() []Threshold {
 			Evaluator: func(r *Report) (float64, bool) {
 				if results, ok := r.Categories["network"]; ok {
 					for _, res := range results {
-						if net, ok := res.Data.(*NetworkData); ok {
-							if net.SoftnetSqueezeRate > 0 {
-								return net.SoftnetSqueezeRate, true
+						if net, ok := res.Data.(*NetworkData); ok && net.Softnet != nil {
+							if net.Softnet.SqueezeRate > 0 {
+								return net.Softnet.SqueezeRate, true
 							}
 						}
 					}
@@ -501,9 +501,9 @@ func DefaultThresholds() []Threshold {
 			Evaluator: func(r *Report) (float64, bool) {
 				if results, ok := r.Categories["network"]; ok {
 					for _, res := range results {
-						if net, ok := res.Data.(*NetworkData); ok {
-							if net.TCPAbortMemRate > 0 {
-								return net.TCPAbortMemRate, true
+						if net, ok := res.Data.(*NetworkData); ok && net.TCPExt != nil {
+							if net.TCPExt.TCPAbortMemRate > 0 {
+								return net.TCPExt.TCPAbortMemRate, true
 							}
 						}
 					}
@@ -521,10 +521,10 @@ func DefaultThresholds() []Threshold {
 			Evaluator: func(r *Report) (float64, bool) {
 				if results, ok := r.Categories["network"]; ok {
 					for _, res := range results {
-						if net, ok := res.Data.(*NetworkData); ok && len(net.IRQDistribution) > 1 {
+						if net, ok := res.Data.(*NetworkData); ok && net.Softnet != nil && len(net.Softnet.IRQDistribution) > 1 {
 							var maxDelta, minDelta int64
-							minDelta = net.IRQDistribution[0].NetRxDelta
-							for _, d := range net.IRQDistribution {
+							minDelta = net.Softnet.IRQDistribution[0].NetRxDelta
+							for _, d := range net.Softnet.IRQDistribution {
 								if d.NetRxDelta > maxDelta {
 									maxDelta = d.NetRxDelta
 								}
@@ -558,9 +558,9 @@ func DefaultThresholds() []Threshold {
 			Evaluator: func(r *Report) (float64, bool) {
 				if results, ok := r.Categories["network"]; ok {
 					for _, res := range results {
-						if net, ok := res.Data.(*NetworkData); ok {
-							if net.UDPRcvbufErrRate > 0 {
-								return net.UDPRcvbufErrRate, true
+						if net, ok := res.Data.(*NetworkData); ok && net.UDP != nil {
+							if net.UDP.RcvbufErrRate > 0 {
+								return net.UDP.RcvbufErrRate, true
 							}
 						}
 					}
@@ -578,9 +578,9 @@ func DefaultThresholds() []Threshold {
 			Evaluator: func(r *Report) (float64, bool) {
 				if results, ok := r.Categories["network"]; ok {
 					for _, res := range results {
-						if net, ok := res.Data.(*NetworkData); ok {
-							if net.TCPRcvQDropRate > 0 {
-								return net.TCPRcvQDropRate, true
+						if net, ok := res.Data.(*NetworkData); ok && net.TCPExt != nil {
+							if net.TCPExt.TCPRcvQDropRate > 0 {
+								return net.TCPExt.TCPRcvQDropRate, true
 							}
 						}
 					}
@@ -598,9 +598,9 @@ func DefaultThresholds() []Threshold {
 			Evaluator: func(r *Report) (float64, bool) {
 				if results, ok := r.Categories["network"]; ok {
 					for _, res := range results {
-						if net, ok := res.Data.(*NetworkData); ok {
-							if net.TCPZeroWindowDropRate > 0 {
-								return net.TCPZeroWindowDropRate, true
+						if net, ok := res.Data.(*NetworkData); ok && net.TCPExt != nil {
+							if net.TCPExt.TCPZeroWindowDropRate > 0 {
+								return net.TCPExt.TCPZeroWindowDropRate, true
 							}
 						}
 					}

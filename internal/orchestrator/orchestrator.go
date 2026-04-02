@@ -308,7 +308,7 @@ func (o *Orchestrator) buildMetadata(profile ProfileConfig) model.Metadata {
 	meta := model.Metadata{
 		Tool:          "melisai",
 		Version:       "0.2.0",
-		SchemaVersion: "1.0.0",
+		SchemaVersion: "1.1.0",
 		Hostname:      hostname,
 		Timestamp:     time.Now().UTC().Format(time.RFC3339),
 		Duration:      profile.Duration.String(),

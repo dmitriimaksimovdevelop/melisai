@@ -115,8 +115,9 @@ func GenerateRecommendations(report *Report) []Recommendation {
 	// Network recommendations
 	if netResults, ok := report.Categories["network"]; ok {
 		for _, r := range netResults {
-			if net, ok := r.Data.(*NetworkData); ok {
-				if net.CongestionCtrl != "" && net.CongestionCtrl != "bbr" {
+			if net, ok := r.Data.(*NetworkData); ok && net.Sysctls != nil {
+				sc := net.Sysctls
+				if sc.CongestionCtrl != "" && sc.CongestionCtrl != "bbr" {
 					recs = append(recs, Recommendation{
 						Priority: priority,
 						Category: "network",
@@ -131,7 +132,7 @@ func GenerateRecommendations(report *Report) []Recommendation {
 							"echo 'net.ipv4.tcp_congestion_control=bbr' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "2-3x throughput on high-BDP links, lower retransmits",
-						Evidence:       formatEvidence("tcp_congestion_control=%s", net.CongestionCtrl),
+						Evidence:       formatEvidence("tcp_congestion_control=%s", sc.CongestionCtrl),
 						Source:         "Google BBR paper, Brendan Gregg Systems Performance ch.10",
 					})
 					priority++
@@ -149,7 +150,7 @@ func GenerateRecommendations(report *Report) []Recommendation {
 					})
 					priority++
 				}
-				if net.SomaxConn > 0 && net.SomaxConn < 4096 {
+				if sc.SomaxConn > 0 && sc.SomaxConn < 4096 {
 					recs = append(recs, Recommendation{
 						Priority: priority,
 						Category: "network",
@@ -160,12 +161,12 @@ func GenerateRecommendations(report *Report) []Recommendation {
 							"echo 'net.core.somaxconn=4096' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Prevent connection drops under burst load",
-						Evidence:       formatEvidence("somaxconn=%d", net.SomaxConn),
+						Evidence:       formatEvidence("somaxconn=%d", sc.SomaxConn),
 						Source:         "Linux networking documentation",
 					})
 					priority++
 				}
-				if isLowTCPBuffer(net.TCPRmem) {
+				if isLowTCPBuffer(sc.TCPRmem) {
 					recs = append(recs, Recommendation{
 						Priority: priority,
 						Category: "network",
@@ -176,12 +177,12 @@ func GenerateRecommendations(report *Report) []Recommendation {
 							"echo 'net.ipv4.tcp_rmem=4096 87380 6291456' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Better throughput on high-BDP paths",
-						Evidence:       formatEvidence("tcp_rmem=%s", net.TCPRmem),
+						Evidence:       formatEvidence("tcp_rmem=%s", sc.TCPRmem),
 						Source:         "Brendan Gregg, Systems Performance ch.10",
 					})
 					priority++
 				}
-				if isLowTCPBuffer(net.TCPWmem) {
+				if isLowTCPBuffer(sc.TCPWmem) {
 					recs = append(recs, Recommendation{
 						Priority: priority,
 						Category: "network",
@@ -192,12 +193,12 @@ func GenerateRecommendations(report *Report) []Recommendation {
 							"echo 'net.ipv4.tcp_wmem=4096 65536 6291456' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Better throughput on high-BDP paths",
-						Evidence:       formatEvidence("tcp_wmem=%s", net.TCPWmem),
+						Evidence:       formatEvidence("tcp_wmem=%s", sc.TCPWmem),
 						Source:         "Brendan Gregg, Systems Performance ch.10",
 					})
 					priority++
 				}
-				if net.TCPTWReuse == 0 && net.TCP != nil && net.TCP.TimeWaitCount > 1000 {
+				if sc.TCPTWReuse == 0 && net.TCP != nil && net.TCP.TimeWaitCount > 1000 {
 					recs = append(recs, Recommendation{
 						Priority: priority,
 						Category: "network",
@@ -208,12 +209,12 @@ func GenerateRecommendations(report *Report) []Recommendation {
 							"echo 'net.ipv4.tcp_tw_reuse=1' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Reduce TIME_WAIT socket accumulation on busy servers",
-						Evidence:       formatEvidence("tcp_tw_reuse=%d, timewait_count=%d", net.TCPTWReuse, net.TCP.TimeWaitCount),
+						Evidence:       formatEvidence("tcp_tw_reuse=%d, timewait_count=%d", sc.TCPTWReuse, net.TCP.TimeWaitCount),
 						Source:         "Brendan Gregg, Systems Performance ch.10",
 					})
 					priority++
 				}
-				if net.TCPMaxSynBacklog > 0 && net.TCPMaxSynBacklog < 4096 {
+				if sc.TCPMaxSynBacklog > 0 && sc.TCPMaxSynBacklog < 4096 {
 					recs = append(recs, Recommendation{
 						Priority: priority,
 						Category: "network",
@@ -224,7 +225,7 @@ func GenerateRecommendations(report *Report) []Recommendation {
 							"echo 'net.ipv4.tcp_max_syn_backlog=8192' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Handle connection bursts without SYN drops",
-						Evidence:       formatEvidence("tcp_max_syn_backlog=%d", net.TCPMaxSynBacklog),
+						Evidence:       formatEvidence("tcp_max_syn_backlog=%d", sc.TCPMaxSynBacklog),
 						Source:         "Brendan Gregg, Systems Performance ch.10",
 					})
 					priority++
@@ -264,7 +265,7 @@ func GenerateRecommendations(report *Report) []Recommendation {
 						priority++
 					}
 				}
-				if net.ListenOverflows > 0 {
+				if net.TCPExt != nil && net.TCPExt.ListenOverflows > 0 {
 					recs = append(recs, Recommendation{
 						Priority: priority,
 						Category: "network",
@@ -278,14 +279,14 @@ func GenerateRecommendations(report *Report) []Recommendation {
 							"echo 'net.core.somaxconn=65535' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Eliminate accept queue overflow drops under burst load",
-						Evidence:       formatEvidence("ListenOverflows=%d, ListenDrops=%d", net.ListenOverflows, net.ListenDrops),
+						Evidence:       formatEvidence("ListenOverflows=%d, ListenDrops=%d", net.TCPExt.ListenOverflows, net.TCPExt.ListenDrops),
 						Source:         "Linux networking, SO_REUSEPORT documentation",
 					})
 					priority++
 				}
-				if net.NetdevMaxBacklog > 0 && net.NetdevMaxBacklog < 5000 {
+				if sc.NetdevMaxBacklog > 0 && sc.NetdevMaxBacklog < 5000 && net.Softnet != nil {
 					hasSoftnetDrops := false
-					for _, s := range net.SoftnetStats {
+					for _, s := range net.Softnet.Stats {
 						if s.Dropped > 0 {
 							hasSoftnetDrops = true
 							break
@@ -304,13 +305,13 @@ func GenerateRecommendations(report *Report) []Recommendation {
 								"echo 'net.core.netdev_max_backlog=10000' >> /etc/sysctl.d/99-melisai.conf",
 							},
 							ExpectedImpact: "Reduce packet drops between NIC and kernel processing",
-							Evidence:       formatEvidence("netdev_max_backlog=%d", net.NetdevMaxBacklog),
+							Evidence:       formatEvidence("netdev_max_backlog=%d", sc.NetdevMaxBacklog),
 							Source:         "RHEL Network Performance Tuning, Brendan Gregg Systems Performance ch.10",
 						})
 						priority++
 					}
 				}
-				if net.RmemMax > 0 && net.RmemMax < 16777216 {
+				if sc.RmemMax > 0 && sc.RmemMax < 16777216 {
 					recs = append(recs, Recommendation{
 						Priority: priority,
 						Category: "network",
@@ -325,13 +326,13 @@ func GenerateRecommendations(report *Report) []Recommendation {
 							"echo 'net.core.wmem_max=16777216' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Allow applications to request larger socket buffers (required for high-BDP and UDP workloads)",
-						Evidence:       formatEvidence("rmem_max=%d, wmem_max=%d", net.RmemMax, net.WmemMax),
+						Evidence:       formatEvidence("rmem_max=%d, wmem_max=%d", sc.RmemMax, sc.WmemMax),
 						Source:         "ESnet Fasterdata, RHEL Network Tuning Guide",
 					})
 					priority++
 				}
-				if net.IPLocalPortRange != "" {
-					fields := strings.Fields(net.IPLocalPortRange)
+				if sc.IPLocalPortRange != "" {
+					fields := strings.Fields(sc.IPLocalPortRange)
 					if len(fields) == 2 {
 						lo, _ := strconv.Atoi(fields[0])
 						hi, _ := strconv.Atoi(fields[1])
@@ -348,14 +349,14 @@ func GenerateRecommendations(report *Report) []Recommendation {
 									"echo 'net.ipv4.ip_local_port_range=1024 65535' >> /etc/sysctl.d/99-melisai.conf",
 								},
 								ExpectedImpact: "More ports for outbound connections (prevents EADDRNOTAVAIL under load)",
-								Evidence:       formatEvidence("ip_local_port_range=%s (%d ports)", net.IPLocalPortRange, hi-lo),
+								Evidence:       formatEvidence("ip_local_port_range=%s (%d ports)", sc.IPLocalPortRange, hi-lo),
 								Source:         "RHEL 9 Network Performance Tuning",
 							})
 							priority++
 						}
 					}
 				}
-				if net.TCPSlowStartAfterIdle == 1 {
+				if sc.TCPSlowStartAfterIdle == 1 {
 					recs = append(recs, Recommendation{
 						Priority: priority,
 						Category: "network",
@@ -368,12 +369,12 @@ func GenerateRecommendations(report *Report) []Recommendation {
 							"echo 'net.ipv4.tcp_slow_start_after_idle=0' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Prevent congestion window reset on idle keepalive connections",
-						Evidence:       formatEvidence("tcp_slow_start_after_idle=%d", net.TCPSlowStartAfterIdle),
+						Evidence:       formatEvidence("tcp_slow_start_after_idle=%d", sc.TCPSlowStartAfterIdle),
 						Source:         "Cloudflare TCP optimization, RFC 7661",
 					})
 					priority++
 				}
-				if net.TCPFastOpen >= 0 && net.TCPFastOpen < 3 {
+				if sc.TCPFastOpen >= 0 && sc.TCPFastOpen < 3 {
 					recs = append(recs, Recommendation{
 						Priority: priority,
 						Category: "network",
@@ -386,19 +387,21 @@ func GenerateRecommendations(report *Report) []Recommendation {
 							"echo 'net.ipv4.tcp_fastopen=3' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Save 1 RTT on reconnections (especially for web servers)",
-						Evidence:       formatEvidence("tcp_fastopen=%d", net.TCPFastOpen),
+						Evidence:       formatEvidence("tcp_fastopen=%d", sc.TCPFastOpen),
 						Source:         "RHEL 9 Network Tuning, Linux tcp(7)",
 					})
 					priority++
 				}
 				hasSqueeze := false
-				for _, s := range net.SoftnetStats {
+				if net.Softnet != nil {
+				for _, s := range net.Softnet.Stats {
 					if s.TimeSqueeze > 0 {
 						hasSqueeze = true
 						break
 					}
 				}
-				if hasSqueeze && net.NetdevBudget > 0 && net.NetdevBudget < 600 {
+				}
+				if hasSqueeze && sc.NetdevBudget > 0 && sc.NetdevBudget < 600 {
 					recs = append(recs, Recommendation{
 						Priority: priority,
 						Category: "network",
@@ -413,12 +416,12 @@ func GenerateRecommendations(report *Report) []Recommendation {
 							"echo 'net.core.netdev_budget_usecs=8000' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Allow kernel more time/packets per NAPI poll cycle",
-						Evidence:       formatEvidence("netdev_budget=%d, netdev_budget_usecs=%d", net.NetdevBudget, net.NetdevBudgetUsecs),
+						Evidence:       formatEvidence("netdev_budget=%d, netdev_budget_usecs=%d", sc.NetdevBudget, sc.NetdevBudgetUsecs),
 						Source:         "Brendan Gregg USE Method, Packagecloud Linux Networking Stack",
 					})
 					priority++
 				}
-				if net.UDPRcvbufErrors > 0 && net.RmemMax > 0 && net.RmemMax < 26214400 {
+				if net.UDP != nil && net.UDP.RcvbufErrors > 0 && sc.RmemMax > 0 && sc.RmemMax < 26214400 {
 					recs = append(recs, Recommendation{
 						Priority: priority,
 						Category: "network",
@@ -431,7 +434,7 @@ func GenerateRecommendations(report *Report) []Recommendation {
 							"echo 'net.core.rmem_max=26214400' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Allow UDP sockets to use larger receive buffers, prevent drops",
-						Evidence:       formatEvidence("udp_rcvbuf_errors=%d, rmem_max=%d", net.UDPRcvbufErrors, net.RmemMax),
+						Evidence:       formatEvidence("udp_rcvbuf_errors=%d, rmem_max=%d", net.UDP.RcvbufErrors, sc.RmemMax),
 						Source:         "Packagecloud Linux Networking Stack Monitoring",
 					})
 					priority++
@@ -478,7 +481,7 @@ func GenerateRecommendations(report *Report) []Recommendation {
 				}
 
 				// TCP zero window drops — app can't keep up with incoming data
-				if net.TCPZeroWindowDropRate > 0 {
+				if net.TCPExt != nil && net.TCPExt.TCPZeroWindowDropRate > 0 {
 					recs = append(recs, Recommendation{
 						Priority: priority,
 						Category: "network",
@@ -492,14 +495,14 @@ func GenerateRecommendations(report *Report) []Recommendation {
 							"echo 'net.ipv4.tcp_rmem=4096 131072 16777216' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Larger receive buffers give the application more headroom before window closes",
-						Evidence:       formatEvidence("tcp_zero_window_drop_rate=%.1f/s, tcp_to_zero_window=%d", net.TCPZeroWindowDropRate, net.TCPToZeroWindowAdv),
+						Evidence:       formatEvidence("tcp_zero_window_drop_rate=%.1f/s, tcp_to_zero_window=%d", net.TCPExt.TCPZeroWindowDropRate, net.TCPExt.TCPToZeroWindowAdv),
 						Source:         "Linux TCP flow control, Brendan Gregg Systems Performance ch.10",
 					})
 					priority++
 				}
 
 				// ARP table too small for container/K8s environments
-				if net.ARPGcThresh3 > 0 && net.ARPGcThresh3 <= 1024 {
+				if sc.ARPGcThresh3 > 0 && sc.ARPGcThresh3 <= 1024 {
 					recs = append(recs, Recommendation{
 						Priority: priority,
 						Category: "network",
@@ -516,13 +519,13 @@ func GenerateRecommendations(report *Report) []Recommendation {
 							"echo 'net.ipv4.neigh.default.gc_thresh3=8192' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Prevent 'neighbour table overflow' errors in large subnets or container environments",
-						Evidence:       formatEvidence("arp_gc_thresh3=%d", net.ARPGcThresh3),
+						Evidence:       formatEvidence("arp_gc_thresh3=%d", sc.ARPGcThresh3),
 						Source:         "Kubernetes networking, Linux neigh(7)",
 					})
 					priority++
 				}
 
-				if net.PruneCalled > 0 {
+				if net.TCPExt != nil && net.TCPExt.PruneCalled > 0 {
 					recs = append(recs, Recommendation{
 						Priority: priority,
 						Category: "network",
@@ -535,7 +538,7 @@ func GenerateRecommendations(report *Report) []Recommendation {
 							"echo 'net.ipv4.tcp_mem=1048576 2097152 4194304' >> /etc/sysctl.d/99-melisai.conf",
 						},
 						ExpectedImpact: "Prevent kernel from pruning TCP receive buffers under high connection count",
-						Evidence:       formatEvidence("PruneCalled=%d, tcp_mem=%s", net.PruneCalled, net.TCPMem),
+						Evidence:       formatEvidence("PruneCalled=%d, tcp_mem=%s", net.TCPExt.PruneCalled, sc.TCPMem),
 						Source:         "Linux TCP memory management, Brendan Gregg Systems Performance ch.10",
 					})
 					priority++

@@ -309,29 +309,34 @@ The JSON report has four main sections:
 | `summary.health_score` | 90-100 = healthy, 70-89 = some issues, <70 = needs attention |
 | `summary.anomalies` | Each has `severity` (warning/critical), `metric`, `message` |
 | `summary.recommendations` | Copy-paste the `commands` field to fix issues |
-| `categories.network[0].data` | Raw metrics — interfaces, TCP, conntrack, softnet, etc. |
+| `categories.network[0].data` | Raw metrics in sub-structs: `.sysctls`, `.tcp_ext`, `.softnet`, `.udp`, `.socket_mem` |
 
 ### Network Deep Diagnostics — Manual Inspection
 
 ```bash
 # Conntrack table usage
 jq '.categories.network[0].data.conntrack' report.json
-# {"count": 15000, "max": 65536, "usage_pct": 22.9}
 
 # Softnet drops (per-CPU) — any "dropped" > 0 is bad
-jq '.categories.network[0].data.softnet_stats[] | select(.dropped > 0)' report.json
+jq '.categories.network[0].data.softnet.stats[] | select(.dropped > 0)' report.json
 
-# Listen overflows (accept queue full)
-jq '.categories.network[0].data | {listen_overflows, listen_drops}' report.json
+# Listen overflows (accept queue full) — rate-based
+jq '.categories.network[0].data.tcp_ext | {listen_overflows, listen_drops, listen_overflow_rate}' report.json
 
 # NIC ring buffer (is it maxed out?)
 jq '.categories.network[0].data.interfaces[] | {name, driver, ring_rx_current, ring_rx_max, rx_discards}' report.json
 
 # IRQ imbalance (check if one CPU handles all network interrupts)
-jq '.categories.network[0].data.irq_distribution' report.json
+jq '.categories.network[0].data.softnet.irq_distribution' report.json
 
 # TCP memory pressure
-jq '.categories.network[0].data | {prune_called, tcp_abort_on_memory, tcp_mem}' report.json
+jq '.categories.network[0].data.tcp_ext | {prune_called, tcp_abort_on_memory}' report.json
+
+# All sysctls at a glance
+jq '.categories.network[0].data.sysctls' report.json
+
+# Socket memory and orphan sockets
+jq '.categories.network[0].data.socket_mem' report.json
 ```
 
 ### Useful jq One-Liners

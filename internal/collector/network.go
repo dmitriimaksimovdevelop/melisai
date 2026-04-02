@@ -97,58 +97,65 @@ func (c *NetworkCollector) Collect(ctx context.Context, cfg CollectConfig) (*mod
 	// ss — connection state summary
 	c.parseSSConnections(ctx, data)
 
-	// TCP sysctl tuning parameters
-	data.CongestionCtrl = readSysctlString(c.procRoot, "sys/net/ipv4/tcp_congestion_control")
-	data.TCPRmem = readSysctlString(c.procRoot, "sys/net/ipv4/tcp_rmem")
-	data.TCPWmem = readSysctlString(c.procRoot, "sys/net/ipv4/tcp_wmem")
-	data.SomaxConn = readSysctlInt(c.procRoot, "sys/net/core/somaxconn")
-	data.TCPMaxSynBacklog = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_max_syn_backlog")
-	data.TCPTWReuse = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_tw_reuse")
+	// Initialize sub-structs
+	data.Sysctls = &model.NetworkSysctls{}
+	data.TCPExt = &model.TCPExtendedStats{}
+	data.UDP = &model.UDPStats{}
+	data.Softnet = &model.SoftnetData{}
+	data.SocketMem = &model.SocketMemStats{}
 
-	// Deep network diagnostics — sysctls
-	data.TCPMem = readSysctlString(c.procRoot, "sys/net/ipv4/tcp_mem")
-	data.TCPMaxTwBuckets = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_max_tw_buckets")
-	data.TCPKeepaliveTime = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_keepalive_time")
-	data.TCPKeepaliveIntvl = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_keepalive_intvl")
-	data.TCPKeepaliveProbes = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_keepalive_probes")
-	data.NetdevBudget = readSysctlInt(c.procRoot, "sys/net/core/netdev_budget")
-	data.NetdevBudgetUsecs = readSysctlInt(c.procRoot, "sys/net/core/netdev_budget_usecs")
-	data.NetdevMaxBacklog = readSysctlInt(c.procRoot, "sys/net/core/netdev_max_backlog")
-	data.RmemMax = readSysctlInt(c.procRoot, "sys/net/core/rmem_max")
-	data.WmemMax = readSysctlInt(c.procRoot, "sys/net/core/wmem_max")
-	data.IPLocalPortRange = readSysctlString(c.procRoot, "sys/net/ipv4/ip_local_port_range")
-	data.TCPFinTimeout = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_fin_timeout")
-	data.TCPSlowStartAfterIdle = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_slow_start_after_idle")
-	data.TCPFastOpen = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_fastopen")
-	data.TCPSyncookies = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_syncookies")
-	data.TCPNotsentLowat = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_notsent_lowat")
-	data.DefaultQdisc = readSysctlString(c.procRoot, "sys/net/core/default_qdisc")
-	data.TCPMtuProbing = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_mtu_probing")
-	data.ARPGcThresh1 = readSysctlInt(c.procRoot, "sys/net/ipv4/neigh/default/gc_thresh1")
-	data.ARPGcThresh2 = readSysctlInt(c.procRoot, "sys/net/ipv4/neigh/default/gc_thresh2")
-	data.ARPGcThresh3 = readSysctlInt(c.procRoot, "sys/net/ipv4/neigh/default/gc_thresh3")
+	// TCP/network sysctl tuning parameters
+	sc := data.Sysctls
+	sc.CongestionCtrl = readSysctlString(c.procRoot, "sys/net/ipv4/tcp_congestion_control")
+	sc.TCPRmem = readSysctlString(c.procRoot, "sys/net/ipv4/tcp_rmem")
+	sc.TCPWmem = readSysctlString(c.procRoot, "sys/net/ipv4/tcp_wmem")
+	sc.SomaxConn = readSysctlInt(c.procRoot, "sys/net/core/somaxconn")
+	sc.TCPMaxSynBacklog = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_max_syn_backlog")
+	sc.TCPTWReuse = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_tw_reuse")
+	sc.TCPMem = readSysctlString(c.procRoot, "sys/net/ipv4/tcp_mem")
+	sc.TCPMaxTwBuckets = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_max_tw_buckets")
+	sc.TCPKeepaliveTime = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_keepalive_time")
+	sc.TCPKeepaliveIntvl = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_keepalive_intvl")
+	sc.TCPKeepaliveProbes = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_keepalive_probes")
+	sc.NetdevBudget = readSysctlInt(c.procRoot, "sys/net/core/netdev_budget")
+	sc.NetdevBudgetUsecs = readSysctlInt(c.procRoot, "sys/net/core/netdev_budget_usecs")
+	sc.NetdevMaxBacklog = readSysctlInt(c.procRoot, "sys/net/core/netdev_max_backlog")
+	sc.RmemMax = readSysctlInt(c.procRoot, "sys/net/core/rmem_max")
+	sc.WmemMax = readSysctlInt(c.procRoot, "sys/net/core/wmem_max")
+	sc.IPLocalPortRange = readSysctlString(c.procRoot, "sys/net/ipv4/ip_local_port_range")
+	sc.TCPFinTimeout = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_fin_timeout")
+	sc.TCPSlowStartAfterIdle = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_slow_start_after_idle")
+	sc.TCPFastOpen = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_fastopen")
+	sc.TCPSyncookies = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_syncookies")
+	sc.TCPNotsentLowat = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_notsent_lowat")
+	sc.DefaultQdisc = readSysctlString(c.procRoot, "sys/net/core/default_qdisc")
+	sc.TCPMtuProbing = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_mtu_probing")
+	sc.ARPGcThresh1 = readSysctlInt(c.procRoot, "sys/net/ipv4/neigh/default/gc_thresh1")
+	sc.ARPGcThresh2 = readSysctlInt(c.procRoot, "sys/net/ipv4/neigh/default/gc_thresh2")
+	sc.ARPGcThresh3 = readSysctlInt(c.procRoot, "sys/net/ipv4/neigh/default/gc_thresh3")
 
 	// Conntrack table stats
 	data.Conntrack = c.parseConntrack()
 
 	// Softnet stats (per-CPU packet processing)
-	data.SoftnetStats = c.parseSoftnetStat()
+	data.Softnet.Stats = c.parseSoftnetStat()
 
 	// IRQ distribution (two-point delta — reuse pre/post interval samples)
-	data.IRQDistribution = c.computeIRQDistribution(irqSample1)
+	data.Softnet.IRQDistribution = c.computeIRQDistribution(irqSample1)
 
 	// Extended TCP stats from /proc/net/netstat
 	c.parseNetstat(data)
 
 	// Compute rate fields from two-point deltas
 	secs := interval.Seconds()
+	ext := data.TCPExt
 	if secs > 0 {
 		// Softnet drop/squeeze rates
-		if softnet1 != nil && len(data.SoftnetStats) == len(softnet1) {
+		if softnet1 != nil && len(data.Softnet.Stats) == len(softnet1) {
 			var dropDelta, squeezeDelta int64
 			for i := range softnet1 {
-				dd := data.SoftnetStats[i].Dropped - softnet1[i].Dropped
-				sd := data.SoftnetStats[i].TimeSqueeze - softnet1[i].TimeSqueeze
+				dd := data.Softnet.Stats[i].Dropped - softnet1[i].Dropped
+				sd := data.Softnet.Stats[i].TimeSqueeze - softnet1[i].TimeSqueeze
 				if dd > 0 {
 					dropDelta += dd
 				}
@@ -156,36 +163,39 @@ func (c *NetworkCollector) Collect(ctx context.Context, cfg CollectConfig) (*mod
 					squeezeDelta += sd
 				}
 			}
-			data.SoftnetDropRate = float64(dropDelta) / secs
-			data.SoftnetSqueezeRate = float64(squeezeDelta) / secs
+			data.Softnet.DropRate = float64(dropDelta) / secs
+			data.Softnet.SqueezeRate = float64(squeezeDelta) / secs
 		}
 		// TCP extended counter rates
-		if netstat1.ListenOverflows > 0 || data.ListenOverflows > 0 {
-			d := data.ListenOverflows - netstat1.ListenOverflows
-			if d > 0 {
-				data.ListenOverflowRate = float64(d) / secs
+		if netstat1.TCPExt != nil {
+			n1 := netstat1.TCPExt
+			if n1.ListenOverflows > 0 || ext.ListenOverflows > 0 {
+				d := ext.ListenOverflows - n1.ListenOverflows
+				if d > 0 {
+					ext.ListenOverflowRate = float64(d) / secs
+				}
 			}
-		}
-		if netstat1.TCPAbortOnMemory > 0 || data.TCPAbortOnMemory > 0 {
-			d := data.TCPAbortOnMemory - netstat1.TCPAbortOnMemory
-			if d > 0 {
-				data.TCPAbortMemRate = float64(d) / secs
+			if n1.TCPAbortOnMemory > 0 || ext.TCPAbortOnMemory > 0 {
+				d := ext.TCPAbortOnMemory - n1.TCPAbortOnMemory
+				if d > 0 {
+					ext.TCPAbortMemRate = float64(d) / secs
+				}
+			}
+			if ext.TCPRcvQDrop > n1.TCPRcvQDrop {
+				ext.TCPRcvQDropRate = float64(ext.TCPRcvQDrop-n1.TCPRcvQDrop) / secs
+			}
+			if ext.TCPZeroWindowDrop > n1.TCPZeroWindowDrop {
+				ext.TCPZeroWindowDropRate = float64(ext.TCPZeroWindowDrop-n1.TCPZeroWindowDrop) / secs
 			}
 		}
 		// UDP rcvbuf error rate
-		if snmp1.UDPRcvbufErrors > 0 || data.UDPRcvbufErrors > 0 {
-			d := data.UDPRcvbufErrors - snmp1.UDPRcvbufErrors
-			if d > 0 {
-				data.UDPRcvbufErrRate = float64(d) / secs
+		if snmp1.UDP != nil && data.UDP != nil {
+			if snmp1.UDP.RcvbufErrors > 0 || data.UDP.RcvbufErrors > 0 {
+				d := data.UDP.RcvbufErrors - snmp1.UDP.RcvbufErrors
+				if d > 0 {
+					data.UDP.RcvbufErrRate = float64(d) / secs
+				}
 			}
-		}
-		// TCPRcvQDrop rate (app not reading from ESTAB sockets)
-		if data.TCPRcvQDrop > netstat1.TCPRcvQDrop {
-			data.TCPRcvQDropRate = float64(data.TCPRcvQDrop-netstat1.TCPRcvQDrop) / secs
-		}
-		// TCPZeroWindowDrop rate
-		if data.TCPZeroWindowDrop > netstat1.TCPZeroWindowDrop {
-			data.TCPZeroWindowDropRate = float64(data.TCPZeroWindowDrop-netstat1.TCPZeroWindowDrop) / secs
 		}
 	}
 
@@ -309,6 +319,9 @@ func (c *NetworkCollector) parseSNMP(data *model.NetworkData) {
 			if udpHeaders == nil {
 				udpHeaders = fields[1:]
 			} else {
+				if data.UDP == nil {
+					data.UDP = &model.UDPStats{}
+				}
 				vals := fields[1:]
 				for i, header := range udpHeaders {
 					if i >= len(vals) {
@@ -317,11 +330,11 @@ func (c *NetworkCollector) parseSNMP(data *model.NetworkData) {
 					v, _ := strconv.ParseInt(vals[i], 10, 64)
 					switch header {
 					case "RcvbufErrors":
-						data.UDPRcvbufErrors = v
+						data.UDP.RcvbufErrors = v
 					case "SndbufErrors":
-						data.UDPSndbufErrors = v
+						data.UDP.SndbufErrors = v
 					case "InErrors":
-						data.UDPInErrors = v
+						data.UDP.InErrors = v
 					}
 				}
 			}
@@ -492,25 +505,29 @@ func (c *NetworkCollector) parseNetstat(data *model.NetworkData) {
 						break
 					}
 					v, _ := strconv.ParseInt(vals[i], 10, 64)
+					if data.TCPExt == nil {
+						data.TCPExt = &model.TCPExtendedStats{}
+					}
+					ext := data.TCPExt
 					switch header {
 					case "ListenOverflows":
-						data.ListenOverflows = v
+						ext.ListenOverflows = v
 					case "ListenDrops":
-						data.ListenDrops = v
+						ext.ListenDrops = v
 					case "TCPAbortOnMemory":
-						data.TCPAbortOnMemory = v
+						ext.TCPAbortOnMemory = v
 					case "TCPOFOQueue":
-						data.TCPOFOQueue = v
+						ext.TCPOFOQueue = v
 					case "PruneCalled":
-						data.PruneCalled = v
+						ext.PruneCalled = v
 					case "TCPRcvQDrop":
-						data.TCPRcvQDrop = v
+						ext.TCPRcvQDrop = v
 					case "TCPZeroWindowDrop":
-						data.TCPZeroWindowDrop = v
+						ext.TCPZeroWindowDrop = v
 					case "TCPToZeroWindowAdv":
-						data.TCPToZeroWindowAdv = v
+						ext.TCPToZeroWindowAdv = v
 					case "TCPFromZeroWindowAdv":
-						data.TCPFromZeroWindowAdv = v
+						ext.TCPFromZeroWindowAdv = v
 					}
 				}
 				break
@@ -732,23 +749,29 @@ func (c *NetworkCollector) parseSockstat(data *model.NetworkData) {
 		}
 		// Format: "TCP: inuse 123 orphan 4 tw 567 alloc 890 mem 12"
 		if fields[0] == "TCP:" {
+			if data.SocketMem == nil {
+				data.SocketMem = &model.SocketMemStats{}
+			}
 			for i := 1; i+1 < len(fields); i += 2 {
 				v, _ := strconv.Atoi(fields[i+1])
 				switch fields[i] {
 				case "inuse":
-					data.TCPSocketsInUse = v
+					data.SocketMem.TCPInUse = v
 				case "orphan":
-					data.TCPOrphans = v
+					data.SocketMem.TCPOrphans = v
 				case "mem":
-					data.TCPMemPages = v
+					data.SocketMem.TCPMemPages = v
 				}
 			}
 		}
 		if fields[0] == "UDP:" {
+			if data.SocketMem == nil {
+				data.SocketMem = &model.SocketMemStats{}
+			}
 			for i := 1; i+1 < len(fields); i += 2 {
 				v, _ := strconv.Atoi(fields[i+1])
 				if fields[i] == "inuse" {
-					data.UDPSocketsInUse = v
+					data.SocketMem.UDPInUse = v
 				}
 			}
 		}
