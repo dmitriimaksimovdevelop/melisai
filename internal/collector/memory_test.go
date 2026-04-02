@@ -314,3 +314,186 @@ func TestMemoryCollectorMetadata(t *testing.T) {
 		t.Errorf("Available().Tier = %d, want 1", avail.Tier)
 	}
 }
+
+// ---------- Reclaim/Compaction/THP from vmstat ----------
+
+func TestParseVmstatReclaim(t *testing.T) {
+	c := NewMemoryCollector("../../testdata/proc", "../../testdata/sys")
+	data := &model.MemoryData{}
+	c.parseVmstat(data)
+
+	if data.Reclaim == nil {
+		t.Fatal("Reclaim is nil")
+	}
+	r := data.Reclaim
+	if r.PgscanDirect != 500 {
+		t.Errorf("PgscanDirect = %d, want 500", r.PgscanDirect)
+	}
+	if r.PgscanKswapd != 15000 {
+		t.Errorf("PgscanKswapd = %d, want 15000", r.PgscanKswapd)
+	}
+	if r.PgstealDirect != 450 {
+		t.Errorf("PgstealDirect = %d, want 450", r.PgstealDirect)
+	}
+	if r.AllocstallNormal != 100 {
+		t.Errorf("AllocstallNormal = %d, want 100", r.AllocstallNormal)
+	}
+	if r.CompactStall != 80 {
+		t.Errorf("CompactStall = %d, want 80", r.CompactStall)
+	}
+	if r.CompactSuccess != 60 {
+		t.Errorf("CompactSuccess = %d, want 60", r.CompactSuccess)
+	}
+	if r.CompactFail != 20 {
+		t.Errorf("CompactFail = %d, want 20", r.CompactFail)
+	}
+	if r.THPFaultAlloc != 5000 {
+		t.Errorf("THPFaultAlloc = %d, want 5000", r.THPFaultAlloc)
+	}
+	if r.THPSplitPage != 150 {
+		t.Errorf("THPSplitPage = %d, want 150", r.THPSplitPage)
+	}
+}
+
+func TestParseVmstatRaw(t *testing.T) {
+	c := NewMemoryCollector("../../testdata/proc", "../../testdata/sys")
+	raw := c.parseVmstatRaw()
+	if raw == nil {
+		t.Fatal("parseVmstatRaw returned nil")
+	}
+	if raw["pgscan_direct"] != 500 {
+		t.Errorf("pgscan_direct = %d, want 500", raw["pgscan_direct"])
+	}
+	if raw["compact_stall"] != 80 {
+		t.Errorf("compact_stall = %d, want 80", raw["compact_stall"])
+	}
+}
+
+func TestComputeReclaimRates(t *testing.T) {
+	c := NewMemoryCollector("../../testdata/proc", "../../testdata/sys")
+	data := &model.MemoryData{Reclaim: &model.ReclaimStats{}}
+	v1 := map[string]int64{"pgscan_direct": 100, "compact_stall": 10, "thp_split_page": 5}
+	v2 := map[string]int64{"pgscan_direct": 200, "compact_stall": 30, "thp_split_page": 15}
+	c.computeReclaimRates(data, v1, v2, 1.0)
+
+	if data.Reclaim.DirectReclaimRate != 100 {
+		t.Errorf("DirectReclaimRate = %f, want 100", data.Reclaim.DirectReclaimRate)
+	}
+	if data.Reclaim.CompactStallRate != 20 {
+		t.Errorf("CompactStallRate = %f, want 20", data.Reclaim.CompactStallRate)
+	}
+	if data.Reclaim.THPSplitRate != 10 {
+		t.Errorf("THPSplitRate = %f, want 10", data.Reclaim.THPSplitRate)
+	}
+}
+
+func TestComputeReclaimRatesNilSafe(t *testing.T) {
+	c := NewMemoryCollector("../../testdata/proc", "../../testdata/sys")
+	// Should not panic with nil inputs
+	c.computeReclaimRates(nil, nil, nil, 0)
+	data := &model.MemoryData{}
+	c.computeReclaimRates(data, nil, nil, 1.0)
+}
+
+// ---------- GPU/PCIe Collector ----------
+
+func TestGPUCollectorNoGPU(t *testing.T) {
+	mock := &mockCommandRunner{
+		outputs: map[string][]byte{},
+		errors:  map[string]error{},
+	}
+	c := &GPUCollector{sysRoot: "/nonexistent", cmdRun: mock}
+	result, err := c.Collect(context.Background(), CollectConfig{})
+	// No GPU, no NIC → returns nil
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != nil {
+		t.Errorf("expected nil result when no GPU/NIC detected, got %v", result)
+	}
+}
+
+func TestGPUCollectorWithNvidiaGPU(t *testing.T) {
+	sysDir := t.TempDir()
+
+	// Create fake NIC with numa_node
+	nicDir := filepath.Join(sysDir, "class", "net", "eth0", "device")
+	os.MkdirAll(nicDir, 0755)
+	os.WriteFile(filepath.Join(nicDir, "numa_node"), []byte("0\n"), 0644)
+
+	mock := &mockCommandRunner{
+		outputs: map[string][]byte{
+			"nvidia-smi --query-gpu=index,name,driver_version,pci.bus_id,memory.total,memory.used,utilization.gpu,utilization.memory,temperature.gpu,power.draw --format=csv,noheader,nounits": []byte("0, NVIDIA A100-SXM4-80GB, 535.129.03, 00000000:07:00.0, 81920, 45000, 85, 60, 72, 300\n"),
+		},
+		errors: map[string]error{},
+	}
+
+	// Create fake GPU numa_node in sysfs
+	gpuPCIDir := filepath.Join(sysDir, "bus", "pci", "devices", "00000000:07:00.0")
+	os.MkdirAll(gpuPCIDir, 0755)
+	os.WriteFile(filepath.Join(gpuPCIDir, "numa_node"), []byte("1\n"), 0644)
+
+	c := &GPUCollector{sysRoot: sysDir, cmdRun: mock}
+	result, err := c.Collect(context.Background(), CollectConfig{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result with GPU detected")
+	}
+
+	topo, ok := result.Data.(*model.PCIeTopology)
+	if !ok {
+		t.Fatalf("data is not *PCIeTopology: %T", result.Data)
+	}
+
+	// GPU
+	if len(topo.GPUs) != 1 {
+		t.Fatalf("GPUs count = %d, want 1", len(topo.GPUs))
+	}
+	gpu := topo.GPUs[0]
+	if gpu.Name != "NVIDIA A100-SXM4-80GB" {
+		t.Errorf("GPU name = %q", gpu.Name)
+	}
+	if gpu.NUMANode != 1 {
+		t.Errorf("GPU NUMA = %d, want 1", gpu.NUMANode)
+	}
+	if gpu.MemoryTotal != 81920 {
+		t.Errorf("GPU MemoryTotal = %d, want 81920", gpu.MemoryTotal)
+	}
+	if gpu.UtilGPU != 85 {
+		t.Errorf("GPU UtilGPU = %d, want 85", gpu.UtilGPU)
+	}
+
+	// NIC
+	if topo.NICNUMAMap["eth0"] != 0 {
+		t.Errorf("NIC NUMA = %d, want 0", topo.NICNUMAMap["eth0"])
+	}
+
+	// Cross-NUMA: GPU on node 1, NIC on node 0
+	if len(topo.CrossNUMAPairs) != 1 {
+		t.Fatalf("CrossNUMAPairs = %d, want 1", len(topo.CrossNUMAPairs))
+	}
+	pair := topo.CrossNUMAPairs[0]
+	if pair.GPUNode != 1 || pair.NICNode != 0 {
+		t.Errorf("cross-NUMA pair: GPU node=%d, NIC node=%d", pair.GPUNode, pair.NICNode)
+	}
+}
+
+// ---------- NUMA miss ratio ----------
+
+func TestNUMAMissRatio(t *testing.T) {
+	c := NewMemoryCollector("../../testdata/proc", "../../testdata/sys")
+	nodes := c.parseNUMAStats()
+	// testdata may not have NUMA nodes — just verify no panic
+	if nodes != nil {
+		for _, n := range nodes {
+			if n.NumaHit+n.NumaMiss > 0 {
+				expectedRatio := float64(n.NumaMiss) / float64(n.NumaHit+n.NumaMiss) * 100
+				if math.Abs(n.MissRatio-expectedRatio) > 0.01 {
+					t.Errorf("node%d: MissRatio=%.2f, want %.2f", n.Node, n.MissRatio, expectedRatio)
+				}
+			}
+		}
+	}
+}

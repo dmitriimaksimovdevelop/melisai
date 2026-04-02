@@ -4,3 +4,16 @@ pgpgin 500000
 pgpgout 300000
 pswpin 100
 pswpout 200
+pgscan_direct 500
+pgscan_kswapd 15000
+pgsteal_direct 450
+pgsteal_kswapd 14500
+allocstall_normal 100
+allocstall_dma 0
+allocstall_movable 5
+compact_stall 80
+compact_success 60
+compact_fail 20
+thp_fault_alloc 5000
+thp_collapse_alloc 200
+thp_split_page 150
