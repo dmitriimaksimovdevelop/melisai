@@ -1,6 +1,6 @@
 // Package model defines all data types for the melisai report output.
 // These types are serialized to JSON and consumed by AI/LLM for analysis.
-// Schema version: 1.0.0
+// Schema version: 1.1.0
 package model
 
 import "time"
@@ -307,80 +307,100 @@ type TCPStats struct {
 }
 
 type NetworkData struct {
-	Interfaces       []NetworkInterface `json:"interfaces,omitempty"`
-	TCP              *TCPStats          `json:"tcp,omitempty"`
-	CongestionCtrl   string             `json:"congestion_control,omitempty"`
-	TCPRmem          string             `json:"tcp_rmem,omitempty"`
-	TCPWmem          string             `json:"tcp_wmem,omitempty"`
-	SomaxConn        int                `json:"somaxconn,omitempty"`
-	TCPMaxSynBacklog int                `json:"tcp_max_syn_backlog,omitempty"`
-	TCPTWReuse       int                `json:"tcp_tw_reuse,omitempty"`
-	TotalConnections int                `json:"total_connections,omitempty"`
-	AvgLatencyMs     float64            `json:"avg_latency_ms,omitempty"`
-	P99LatencyMs     float64            `json:"p99_latency_ms,omitempty"`
-	TotalRetransmits int                `json:"total_retransmits,omitempty"`
-	RatePerMin       float64            `json:"rate_per_min,omitempty"`
-	UniqueConns      int                `json:"unique_connections,omitempty"`
-	TotalLookups     int                `json:"total_lookups,omitempty"`
-	// Deep network diagnostics (Tier 1)
-	Conntrack        *ConntrackStats   `json:"conntrack,omitempty"`
-	IRQDistribution  []IRQDistribution `json:"irq_distribution,omitempty"`
-	SoftnetStats     []SoftnetStats    `json:"softnet_stats,omitempty"`
-	TCPMem           string            `json:"tcp_mem,omitempty"`
-	TCPMaxTwBuckets  int               `json:"tcp_max_tw_buckets,omitempty"`
-	TCPKeepaliveTime int               `json:"tcp_keepalive_time,omitempty"`
-	NetdevBudget     int               `json:"netdev_budget,omitempty"`
-	ListenOverflows  int64             `json:"listen_overflows,omitempty"`
-	ListenDrops      int64             `json:"listen_drops,omitempty"`
-	TCPAbortOnMemory int64             `json:"tcp_abort_on_memory,omitempty"`
-	TCPOFOQueue      int64             `json:"tcp_ofo_queue,omitempty"`
-	PruneCalled      int64             `json:"prune_called,omitempty"`
+	Interfaces []NetworkInterface `json:"interfaces,omitempty"`
+	TCP        *TCPStats          `json:"tcp,omitempty"`
+	Conntrack  *ConntrackStats    `json:"conntrack,omitempty"`
+	// Sub-structs for organized metrics (schema v1.1)
+	TCPExt    *TCPExtendedStats `json:"tcp_ext,omitempty"`
+	UDP       *UDPStats         `json:"udp,omitempty"`
+	Softnet   *SoftnetData      `json:"softnet,omitempty"`
+	SocketMem *SocketMemStats   `json:"socket_mem,omitempty"`
+	Sysctls   *NetworkSysctls   `json:"sysctls,omitempty"`
+	// Listen queue depths from ss -tnl
+	ListenSockets []ListenSocket `json:"listen_sockets,omitempty"`
+	// ESTABLISHED sockets with high Recv-Q
+	RecvQSaturated int `json:"recvq_saturated_count,omitempty"`
+	// BCC tool aggregated fields
+	TotalConnections int     `json:"total_connections,omitempty"`
+	AvgLatencyMs     float64 `json:"avg_latency_ms,omitempty"`
+	P99LatencyMs     float64 `json:"p99_latency_ms,omitempty"`
+	TotalRetransmits int     `json:"total_retransmits,omitempty"`
+	RatePerMin       float64 `json:"rate_per_min,omitempty"`
+	UniqueConns      int     `json:"unique_connections,omitempty"`
+	TotalLookups     int     `json:"total_lookups,omitempty"`
+}
+
+// TCPExtendedStats holds counters from /proc/net/netstat TcpExt section.
+type TCPExtendedStats struct {
+	ListenOverflows      int64   `json:"listen_overflows,omitempty"`
+	ListenDrops          int64   `json:"listen_drops,omitempty"`
+	TCPAbortOnMemory     int64   `json:"tcp_abort_on_memory,omitempty"`
+	TCPOFOQueue          int64   `json:"tcp_ofo_queue,omitempty"`
+	PruneCalled          int64   `json:"prune_called,omitempty"`
+	TCPRcvQDrop          int64   `json:"tcp_rcvq_drop,omitempty"`
+	TCPZeroWindowDrop    int64   `json:"tcp_zero_window_drop,omitempty"`
+	TCPToZeroWindowAdv   int64   `json:"tcp_to_zero_window_adv,omitempty"`
+	TCPFromZeroWindowAdv int64   `json:"tcp_from_zero_window_adv,omitempty"`
 	// Rate fields (computed from two-point delta / interval)
-	SoftnetDropRate    float64 `json:"softnet_drop_rate,omitempty"`
-	SoftnetSqueezeRate float64 `json:"softnet_squeeze_rate,omitempty"`
-	ListenOverflowRate float64 `json:"listen_overflow_rate,omitempty"`
-	TCPAbortMemRate    float64 `json:"tcp_abort_mem_rate,omitempty"`
-	UDPRcvbufErrRate   float64 `json:"udp_rcvbuf_err_rate,omitempty"`
-	// UDP stats from /proc/net/snmp
-	UDPRcvbufErrors int64 `json:"udp_rcvbuf_errors,omitempty"`
-	UDPSndbufErrors int64 `json:"udp_sndbuf_errors,omitempty"`
-	UDPInErrors     int64 `json:"udp_in_errors,omitempty"`
-	// Socket memory from /proc/net/sockstat
-	TCPSocketsInUse int   `json:"tcp_sockets_inuse,omitempty"`
-	TCPOrphans      int   `json:"tcp_orphans,omitempty"`
-	TCPMemPages     int   `json:"tcp_mem_pages,omitempty"`
-	UDPSocketsInUse int   `json:"udp_sockets_inuse,omitempty"`
-	// Additional sysctls
-	RmemMax               int    `json:"rmem_max,omitempty"`
-	WmemMax               int    `json:"wmem_max,omitempty"`
-	NetdevMaxBacklog      int    `json:"netdev_max_backlog,omitempty"`
-	IPLocalPortRange      string `json:"ip_local_port_range,omitempty"`
-	TCPFinTimeout         int    `json:"tcp_fin_timeout,omitempty"`
+	ListenOverflowRate    float64 `json:"listen_overflow_rate,omitempty"`
+	TCPAbortMemRate       float64 `json:"tcp_abort_mem_rate,omitempty"`
+	TCPRcvQDropRate       float64 `json:"tcp_rcvq_drop_rate,omitempty"`
+	TCPZeroWindowDropRate float64 `json:"tcp_zero_window_drop_rate,omitempty"`
+}
+
+// UDPStats holds UDP protocol counters from /proc/net/snmp.
+type UDPStats struct {
+	RcvbufErrors int64   `json:"rcvbuf_errors,omitempty"`
+	SndbufErrors int64   `json:"sndbuf_errors,omitempty"`
+	InErrors     int64   `json:"in_errors,omitempty"`
+	RcvbufErrRate float64 `json:"rcvbuf_err_rate,omitempty"`
+}
+
+// SoftnetData holds per-CPU packet processing stats and IRQ distribution.
+type SoftnetData struct {
+	Stats           []SoftnetStats    `json:"stats,omitempty"`
+	IRQDistribution []IRQDistribution `json:"irq_distribution,omitempty"`
+	DropRate        float64           `json:"drop_rate,omitempty"`
+	SqueezeRate     float64           `json:"squeeze_rate,omitempty"`
+}
+
+// SocketMemStats holds socket memory usage from /proc/net/sockstat.
+type SocketMemStats struct {
+	TCPInUse    int `json:"tcp_inuse,omitempty"`
+	TCPOrphans  int `json:"tcp_orphans,omitempty"`
+	TCPMemPages int `json:"tcp_mem_pages,omitempty"`
+	UDPInUse    int `json:"udp_inuse,omitempty"`
+}
+
+// NetworkSysctls holds all collected kernel network tuning parameters.
+type NetworkSysctls struct {
+	CongestionCtrl        string `json:"congestion_control,omitempty"`
+	TCPRmem               string `json:"tcp_rmem,omitempty"`
+	TCPWmem               string `json:"tcp_wmem,omitempty"`
+	TCPMem                string `json:"tcp_mem,omitempty"`
+	SomaxConn             int    `json:"somaxconn,omitempty"`
+	TCPMaxSynBacklog      int    `json:"tcp_max_syn_backlog,omitempty"`
+	TCPTWReuse            int    `json:"tcp_tw_reuse,omitempty"`
+	TCPMaxTwBuckets       int    `json:"tcp_max_tw_buckets,omitempty"`
+	TCPKeepaliveTime      int    `json:"tcp_keepalive_time,omitempty"`
 	TCPKeepaliveIntvl     int    `json:"tcp_keepalive_intvl,omitempty"`
 	TCPKeepaliveProbes    int    `json:"tcp_keepalive_probes,omitempty"`
+	NetdevBudget          int    `json:"netdev_budget,omitempty"`
+	NetdevBudgetUsecs     int    `json:"netdev_budget_usecs,omitempty"`
+	NetdevMaxBacklog      int    `json:"netdev_max_backlog,omitempty"`
+	RmemMax               int    `json:"rmem_max,omitempty"`
+	WmemMax               int    `json:"wmem_max,omitempty"`
+	IPLocalPortRange      string `json:"ip_local_port_range,omitempty"`
+	TCPFinTimeout         int    `json:"tcp_fin_timeout,omitempty"`
 	TCPSlowStartAfterIdle int    `json:"tcp_slow_start_after_idle,omitempty"`
 	TCPFastOpen           int    `json:"tcp_fastopen,omitempty"`
 	TCPSyncookies         int    `json:"tcp_syncookies,omitempty"`
 	TCPNotsentLowat       int    `json:"tcp_notsent_lowat,omitempty"`
 	DefaultQdisc          string `json:"default_qdisc,omitempty"`
 	TCPMtuProbing         int    `json:"tcp_mtu_probing,omitempty"`
-	NetdevBudgetUsecs     int    `json:"netdev_budget_usecs,omitempty"`
-	// TCP recv-side counters from /proc/net/netstat
-	TCPRcvQDrop         int64 `json:"tcp_rcvq_drop,omitempty"`
-	TCPZeroWindowDrop   int64 `json:"tcp_zero_window_drop,omitempty"`
-	TCPToZeroWindowAdv  int64 `json:"tcp_to_zero_window_adv,omitempty"`
-	TCPFromZeroWindowAdv int64 `json:"tcp_from_zero_window_adv,omitempty"`
-	// Rate fields for recv-side counters
-	TCPRcvQDropRate       float64 `json:"tcp_rcvq_drop_rate,omitempty"`
-	TCPZeroWindowDropRate float64 `json:"tcp_zero_window_drop_rate,omitempty"`
-	// Listen queue depths from ss -tnl
-	ListenSockets []ListenSocket `json:"listen_sockets,omitempty"`
-	// ESTABLISHED sockets with high Recv-Q
-	RecvQSaturated int `json:"recvq_saturated_count,omitempty"`
-	// ARP neighbor table thresholds
-	ARPGcThresh1 int `json:"arp_gc_thresh1,omitempty"`
-	ARPGcThresh2 int `json:"arp_gc_thresh2,omitempty"`
-	ARPGcThresh3 int `json:"arp_gc_thresh3,omitempty"`
+	ARPGcThresh1          int    `json:"arp_gc_thresh1,omitempty"`
+	ARPGcThresh2          int    `json:"arp_gc_thresh2,omitempty"`
+	ARPGcThresh3          int    `json:"arp_gc_thresh3,omitempty"`
 }
 
 type ProcessInfo struct {

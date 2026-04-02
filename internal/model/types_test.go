@@ -10,7 +10,7 @@ func TestReportJSON(t *testing.T) {
 		Metadata: Metadata{
 			Tool:          "melisai",
 			Version:       "0.1.0",
-			SchemaVersion: "1.0.0",
+			SchemaVersion: "1.1.0",
 			Hostname:      "test-host",
 			Timestamp:     "2024-01-01T00:00:00Z",
 			Duration:      "30s",
@@ -85,8 +85,8 @@ func TestReportJSON(t *testing.T) {
 		t.Fatalf("unmarshal report: %v", err)
 	}
 
-	if decoded.Metadata.SchemaVersion != "1.0.0" {
-		t.Errorf("schema_version = %q, want 1.0.0", decoded.Metadata.SchemaVersion)
+	if decoded.Metadata.SchemaVersion != "1.1.0" {
+		t.Errorf("schema_version = %q, want 1.1.0", decoded.Metadata.SchemaVersion)
 	}
 	if decoded.Metadata.ContainerEnv != "kubernetes" {
 		t.Errorf("container_env = %q, want kubernetes", decoded.Metadata.ContainerEnv)

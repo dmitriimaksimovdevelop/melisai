@@ -165,9 +165,8 @@ func TestGenerateRecommendations(t *testing.T) {
 			},
 			"network": {
 				{Data: &NetworkData{
-					CongestionCtrl: "cubic",
-					TCP:            &TCPStats{RetransSegs: 500},
-					SomaxConn:      128,
+					Sysctls: &NetworkSysctls{CongestionCtrl: "cubic", SomaxConn: 128},
+					TCP:     &TCPStats{RetransSegs: 500},
 				}},
 			},
 		},
