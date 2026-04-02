@@ -21,6 +21,9 @@ const healthCheckTimeout = 30 * time.Second
 // collectMetricsTimeout is the maximum time for a full profile run.
 const collectMetricsTimeout = 5 * time.Minute
 
+// mcpVersion is set by the MCP server on startup for use by handlers.
+var mcpVersion string
+
 // handleGetHealth runs a quick Tier 1 check and returns health score summary.
 func handleGetHealth(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, healthCheckTimeout)
@@ -30,6 +33,7 @@ func handleGetHealth(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 	// avoiding unnecessary BCC tool discovery overhead.
 	cfg := collector.DefaultConfig()
 	cfg.Profile = "quick"
+	cfg.Version = mcpVersion
 	cfg.Duration = 1 * time.Second
 	cfg.Quiet = true
 
@@ -110,6 +114,7 @@ func handleCollectMetrics(ctx context.Context, request mcp.CallToolRequest) (*mc
 
 	cfg := collector.DefaultConfig()
 	cfg.Profile = profileStr
+	cfg.Version = mcpVersion
 	cfg.Quiet = true
 	cfg.Focus = focusAreas
 	cfg.TargetPIDs = pids
