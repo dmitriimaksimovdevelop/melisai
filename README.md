@@ -49,6 +49,38 @@ $ sudo melisai collect --profile quick -o report.json
 
 ---
 
+## Real-World Diagnosis
+
+One command. 60 seconds. Here's what melisai found on a production Docker host (8 CPUs, 32 GB RAM, HDD RAID):
+
+```
+Health Score: 46 / 100
+
+Anomalies (6):
+  [CRITICAL] tcp_retransmits          134/sec
+  [WARNING]  disk_utilization          80.5%
+  [WARNING]  cpu_psi_pressure          17.6%
+  [WARNING]  io_psi_pressure           12.8%
+  [WARNING]  disk_avg_latency          12.1ms
+  [WARNING]  tcp_close_wait            1 socket
+```
+
+**What melisai found that manual debugging wouldn't:**
+
+The root cause chain — HDD latency (p99=49ms) caused page reclaim pressure (`PruneCalled=105`), which made the kernel prune TCP buffers, triggering 31 retransmits/sec, and cascading into 226K dropped packets on the WireGuard tunnel. Four separate symptoms, one root cause.
+
+| What | Manual | melisai |
+|------|--------|---------|
+| Find the cascade: HDD → reclaim → tcp prune → retransmits → VPN drops | Requires years of kernel experience | Automatic — 37 rules check it all |
+| Know to check `PruneCalled` in `/proc/net/netstat` | You have to know it exists | Collected and evaluated automatically |
+| Identify the process eating 245% CPU + 8.6 GB RAM | `top` shows it, but not in context | Correlated with health score and anomalies |
+| Collect 17,330 stack traces for flame graph | `perf record` + manual setup | Included in one `--profile deep` run |
+| Get copy-paste sysctl fixes with evidence | Google + trial and error | 7 recommendations with exact commands |
+
+**The diagnosis:** server outgrew its hardware. SSD would fix 80% of the problems. The other 20% is workload sizing.
+
+---
+
 ## Who Is This For?
 
 - **SRE / DevOps** — "server is slow, find out why" in one command
@@ -379,6 +411,19 @@ Please open an issue first to discuss significant changes.
 | `binary "X" not owned by root` | `chown root:root /usr/sbin/X-bpfcc` |
 | Empty histogram data | Normal — no events during window |
 | `exit status 1` from BCC tool | Check `dmesg` for BPF errors |
+
+---
+
+## Limitations
+
+Being honest about what melisai is **not**:
+
+- **Not a monitoring system.** It's a diagnostic tool — you run it when something is wrong (or to validate that everything is right). For continuous monitoring, use Prometheus/Grafana/Datadog alongside melisai.
+- **No historical trends.** melisai captures a point-in-time snapshot. It can't tell you "retransmits spiked yesterday at 3 PM."
+- **No alerting.** It doesn't run as a daemon or send notifications. Use it on-demand or via cron + MCP.
+- **BCC tools need kernel headers.** Some distros require `linux-headers-$(uname -r)` for Tier 2 tools. Tier 1 always works.
+- **System-level only.** melisai sees *that* a process uses 245% CPU, but not *why* inside the application. For app-level profiling, use pprof/async-profiler on the process melisai identified.
+- **NVIDIA GPUs only.** AMD ROCm support is on the roadmap but not implemented yet.
 
 ---
 
