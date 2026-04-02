@@ -9,12 +9,13 @@ melisai.dev is the project website hosted on Kubernetes (Hetzner Cloud). It cons
 ```
 melisai repo (this repo)          hetzner-k8s-infra repo
 ├── doc/en/*.md  (22 chapters)    ├── apps/melisai-site/
-├── doc/ru/*.md  (22 chapters)    │   ├── docs/en/*.md    ← copied from melisai/doc/en/
-└── context/WEBSITE.md (this)     │   ├── docs/ru/*.md    ← copied from melisai/doc/ru/
+├── doc/ru/*.md  (22 chapters)    │   ├── melisai/        ← git submodule (this repo)
+└── context/WEBSITE.md (this)     │   │   └── doc/en/, doc/ru/
                                   │   ├── public/
                                   │   │   ├── index.html  ← landing page
                                   │   │   └── install.sh  ← one-liner installer
                                   │   ├── mkdocs.yml      ← mkdocs-material config
+                                  │   ├── build-docs.sh   ← prepares docs from submodule
                                   │   ├── nginx.conf
                                   │   ├── Dockerfile       ← multi-stage: mkdocs build + nginx
                                   │   ├── werf.yaml
@@ -52,30 +53,35 @@ All documentation is authored in this repo under `doc/en/` and `doc/ru/`. This i
 
 The infra repo contains a **copy** of the docs that mkdocs builds into HTML.
 
-### Update procedure
+### Update procedure (git submodule)
+
+melisai repo is a **git submodule** inside hetzner-k8s-infra at `apps/melisai-site/melisai/`.
+The Dockerfile copies only `melisai/doc/` into the build context — no Go code enters the image.
 
 1. Edit docs in `melisai/doc/en/` and/or `melisai/doc/ru/`
 2. Commit and push to melisai repo
-3. Copy updated files to infra repo:
+3. Update submodule in infra repo:
    ```bash
-   # From melisai repo root
-   cp doc/en/*.md ../hetzner-k8s-infra/apps/melisai-site/docs/en/
-   cp doc/ru/*.md ../hetzner-k8s-infra/apps/melisai-site/docs/ru/
-
-   # Rename introduction to index.md (mkdocs convention)
-   mv ../hetzner-k8s-infra/apps/melisai-site/docs/en/00-introduction.md \
-      ../hetzner-k8s-infra/apps/melisai-site/docs/en/index.md
-   mv ../hetzner-k8s-infra/apps/melisai-site/docs/ru/00-introduction.md \
-      ../hetzner-k8s-infra/apps/melisai-site/docs/ru/index.md
+   cd hetzner-k8s-infra
+   cd apps/melisai-site/melisai
+   git pull origin master
+   cd ../../..
+   git add apps/melisai-site/melisai
+   git commit -m "chore: update melisai submodule (docs update)"
+   git push
    ```
-4. If new chapters were added, update `nav:` section in `mkdocs.yml`
-5. Commit, push, and deploy via werf (GitHub Actions `workflow_dispatch`, app=melisai-site)
+4. If new chapters were added, also update `nav:` section in `mkdocs.yml`
+5. Deploy triggers automatically via werf (push to `apps/**`)
 
-### Future: automate sync
+### How Docker build works
 
-TODO: Add a GitHub Action in melisai repo that on push to `doc/**`:
-- Copies docs to hetzner-k8s-infra via repository_dispatch or direct commit
-- Triggers werf deploy
+`build-docs.sh` runs inside the Docker build:
+1. Copies EN docs from `submodule-doc/en/*.md` → `docs/`
+2. Renames `00-introduction.md` → `index.md`
+3. Copies RU docs with `.ru.md` suffix for i18n plugin
+4. Runs `mkdocs build` → static HTML in `/build/site`
+
+Only `melisai/doc/` is COPYed into Docker — the Go source code never enters the image.
 
 ## Infrastructure Details
 
