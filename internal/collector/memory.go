@@ -37,7 +37,7 @@ func (c *MemoryCollector) Collect(ctx context.Context, cfg CollectConfig) (*mode
 	// /proc/meminfo
 	c.parseMeminfo(data)
 
-	// /proc/vmstat — page faults, reclaim, compaction, THP (two-point sampling)
+	// /proc/vmstat — two-point sampling for rate computation
 	vmstat1 := c.parseVmstatRaw()
 	interval := cfg.SampleInterval
 	if interval == 0 {
@@ -48,8 +48,7 @@ func (c *MemoryCollector) Collect(ctx context.Context, cfg CollectConfig) (*mode
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
-	c.parseVmstat(data)
-	vmstat2 := c.parseVmstatRaw()
+	vmstat2 := c.parseVmstatFull(data)
 	c.computeReclaimRates(data, vmstat1, vmstat2, interval.Seconds())
 
 	// vm.* sysctl settings
@@ -137,14 +136,17 @@ func (c *MemoryCollector) parseMeminfo(data *model.MemoryData) {
 	}
 }
 
-func (c *MemoryCollector) parseVmstat(data *model.MemoryData) {
+// parseVmstatFull reads /proc/vmstat, populates MemoryData fields AND returns raw counters for rate computation.
+// This is used for the second sample (after the interval sleep).
+func (c *MemoryCollector) parseVmstatFull(data *model.MemoryData) map[string]int64 {
 	f, err := os.Open(filepath.Join(c.procRoot, "vmstat"))
 	if err != nil {
-		return
+		return nil
 	}
 	defer f.Close()
 
 	r := &model.ReclaimStats{}
+	raw := make(map[string]int64)
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
@@ -159,6 +161,7 @@ func (c *MemoryCollector) parseVmstat(data *model.MemoryData) {
 			data.MinorFaults = val
 		case "pgscan_direct":
 			r.PgscanDirect = val
+			raw[fields[0]] = val
 		case "pgscan_kswapd":
 			r.PgscanKswapd = val
 		case "pgsteal_direct":
@@ -167,12 +170,14 @@ func (c *MemoryCollector) parseVmstat(data *model.MemoryData) {
 			r.PgstealKswapd = val
 		case "allocstall_normal":
 			r.AllocstallNormal = val
+			raw[fields[0]] = val
 		case "allocstall_dma":
 			r.AllocstallDMA = val
 		case "allocstall_movable":
 			r.AllocstallMovable = val
 		case "compact_stall":
 			r.CompactStall = val
+			raw[fields[0]] = val
 		case "compact_success":
 			r.CompactSuccess = val
 		case "compact_fail":
@@ -183,12 +188,14 @@ func (c *MemoryCollector) parseVmstat(data *model.MemoryData) {
 			r.THPCollapseAlloc = val
 		case "thp_split_page":
 			r.THPSplitPage = val
+			raw[fields[0]] = val
 		}
 	}
 	data.Reclaim = r
+	return raw
 }
 
-// parseVmstatRaw returns key vmstat counters as a map for rate computation.
+// parseVmstatRaw returns key vmstat counters as a map for the first-sample reading.
 func (c *MemoryCollector) parseVmstatRaw() map[string]int64 {
 	f, err := os.Open(filepath.Join(c.procRoot, "vmstat"))
 	if err != nil {

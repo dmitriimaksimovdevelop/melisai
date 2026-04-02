@@ -225,7 +225,9 @@ func (o *Orchestrator) runCollectorsParallel(ctx context.Context, collectors []c
 			}
 
 			mu.Lock()
-			results[c.Category()] = append(results[c.Category()], result)
+			if result != nil {
+				results[c.Category()] = append(results[c.Category()], result)
+			}
 			mu.Unlock()
 		}(c)
 	}
@@ -307,7 +309,7 @@ func (o *Orchestrator) buildMetadata(profile ProfileConfig) model.Metadata {
 
 	meta := model.Metadata{
 		Tool:          "melisai",
-		Version:       "0.2.0",
+		Version:       "0.4.1",
 		SchemaVersion: "1.1.0",
 		Hostname:      hostname,
 		Timestamp:     time.Now().UTC().Format(time.RFC3339),

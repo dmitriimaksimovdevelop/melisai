@@ -52,9 +52,8 @@ func (sc *SecurityChecker) ResolveBinary(tool string) (string, error) {
 					return resolved, nil
 				}
 			}
-			// Symlink target is outside allowed paths — also accept if the
-			// original path directory is allowed (e.g. /usr/sbin/tool → /usr/sbin/tool.real)
-			return path, nil
+			// Symlink target is outside allowed paths — reject
+			continue
 		}
 	}
 	return "", fmt.Errorf("tool %q not found in allowed paths: %v", tool, sc.allowedPaths)

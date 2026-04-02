@@ -62,8 +62,10 @@ func (c *GPUCollector) Collect(ctx context.Context, cfg CollectConfig) (*model.R
 
 // detectNvidiaGPUs queries nvidia-smi for GPU information.
 func (c *GPUCollector) detectNvidiaGPUs(ctx context.Context) []model.GPUDevice {
-	// nvidia-smi --query-gpu=index,name,driver_version,pci.bus_id,memory.total,memory.used,utilization.gpu,utilization.memory,temperature.gpu,power.draw --format=csv,noheader,nounits
-	out, err := c.cmdRun.Run(ctx, "nvidia-smi",
+	// Dedicated 5s timeout — nvidia-smi can hang on driver issues
+	nvsmiCtx, nvsmiCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer nvsmiCancel()
+	out, err := c.cmdRun.Run(nvsmiCtx, "nvidia-smi",
 		"--query-gpu=index,name,driver_version,pci.bus_id,memory.total,memory.used,utilization.gpu,utilization.memory,temperature.gpu,power.draw",
 		"--format=csv,noheader,nounits")
 	if err != nil {

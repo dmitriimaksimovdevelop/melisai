@@ -549,10 +549,10 @@ type Recommendation struct {
 	Type           string   `json:"type"`
 	Title          string   `json:"title"`
 	Commands       []string `json:"commands"`
-	Persistent     []string `json:"persistent"`
+	Persistent     []string `json:"persistent,omitempty"`
 	ExpectedImpact string   `json:"expected_impact"`
 	Evidence       string   `json:"evidence"`
-	Source         string   `json:"source"`
+	Source         string   `json:"source,omitempty"`
 }
 
 // --- AI Context ---

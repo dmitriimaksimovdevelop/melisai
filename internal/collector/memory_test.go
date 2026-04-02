@@ -75,7 +75,7 @@ func TestParseMeminfoMissingFile(t *testing.T) {
 func TestParseVmstat(t *testing.T) {
 	mc := newTestMemoryCollector()
 	data := &model.MemoryData{}
-	mc.parseVmstat(data)
+	mc.parseVmstatFull(data)
 
 	if data.MinorFaults != 1000000 {
 		t.Errorf("MinorFaults = %d, want 1000000", data.MinorFaults)
@@ -88,7 +88,7 @@ func TestParseVmstat(t *testing.T) {
 func TestParseVmstatMissingFile(t *testing.T) {
 	mc := NewMemoryCollector("/nonexistent/proc", testSysRoot)
 	data := &model.MemoryData{}
-	mc.parseVmstat(data)
+	mc.parseVmstatFull(data)
 
 	if data.MinorFaults != 0 {
 		t.Errorf("MinorFaults = %d, want 0 for missing file", data.MinorFaults)
@@ -320,7 +320,7 @@ func TestMemoryCollectorMetadata(t *testing.T) {
 func TestParseVmstatReclaim(t *testing.T) {
 	c := NewMemoryCollector("../../testdata/proc", "../../testdata/sys")
 	data := &model.MemoryData{}
-	c.parseVmstat(data)
+	c.parseVmstatFull(data)
 
 	if data.Reclaim == nil {
 		t.Fatal("Reclaim is nil")
