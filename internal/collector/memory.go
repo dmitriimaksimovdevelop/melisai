@@ -37,8 +37,20 @@ func (c *MemoryCollector) Collect(ctx context.Context, cfg CollectConfig) (*mode
 	// /proc/meminfo
 	c.parseMeminfo(data)
 
-	// /proc/vmstat — page faults
+	// /proc/vmstat — page faults, reclaim, compaction, THP (two-point sampling)
+	vmstat1 := c.parseVmstatRaw()
+	interval := cfg.SampleInterval
+	if interval == 0 {
+		interval = 1 * time.Second
+	}
+	select {
+	case <-time.After(interval):
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 	c.parseVmstat(data)
+	vmstat2 := c.parseVmstatRaw()
+	c.computeReclaimRates(data, vmstat1, vmstat2, interval.Seconds())
 
 	// vm.* sysctl settings
 	data.Swappiness = readSysctlInt(c.procRoot, "sys/vm/swappiness")
@@ -52,6 +64,14 @@ func (c *MemoryCollector) Collect(ctx context.Context, cfg CollectConfig) (*mode
 
 	// Transparent Huge Pages
 	data.THPEnabled = c.readTHPEnabled()
+	data.THPDefrag = c.readTHPDefrag()
+
+	// Additional vm.* sysctls
+	data.WatermarkScaleFactor = readSysctlInt(c.procRoot, "sys/vm/watermark_scale_factor")
+	data.DirtyExpireCentisecs = readSysctlInt(c.procRoot, "sys/vm/dirty_expire_centisecs")
+	data.DirtyWritebackCentisecs = readSysctlInt(c.procRoot, "sys/vm/dirty_writeback_centisecs")
+	data.ZoneReclaimMode = readSysctlInt(c.procRoot, "sys/vm/zone_reclaim_mode")
+	data.SchedNumaBalancing = readSysctlInt(c.procRoot, "sys/kernel/sched_numa_balancing")
 
 	// PSI memory pressure
 	c.parsePSI(data)
@@ -59,7 +79,7 @@ func (c *MemoryCollector) Collect(ctx context.Context, cfg CollectConfig) (*mode
 	// /proc/buddyinfo
 	data.BuddyInfo = c.parseBuddyinfo()
 
-	// NUMA stats
+	// NUMA stats (with distance matrix and CPU list)
 	data.NUMANodes = c.parseNUMAStats()
 
 	return &model.Result{
@@ -124,6 +144,7 @@ func (c *MemoryCollector) parseVmstat(data *model.MemoryData) {
 	}
 	defer f.Close()
 
+	r := &model.ReclaimStats{}
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
@@ -136,7 +157,73 @@ func (c *MemoryCollector) parseVmstat(data *model.MemoryData) {
 			data.MajorFaults = val
 		case "pgfault":
 			data.MinorFaults = val
+		case "pgscan_direct":
+			r.PgscanDirect = val
+		case "pgscan_kswapd":
+			r.PgscanKswapd = val
+		case "pgsteal_direct":
+			r.PgstealDirect = val
+		case "pgsteal_kswapd":
+			r.PgstealKswapd = val
+		case "allocstall_normal":
+			r.AllocstallNormal = val
+		case "allocstall_dma":
+			r.AllocstallDMA = val
+		case "allocstall_movable":
+			r.AllocstallMovable = val
+		case "compact_stall":
+			r.CompactStall = val
+		case "compact_success":
+			r.CompactSuccess = val
+		case "compact_fail":
+			r.CompactFail = val
+		case "thp_fault_alloc":
+			r.THPFaultAlloc = val
+		case "thp_collapse_alloc":
+			r.THPCollapseAlloc = val
+		case "thp_split_page":
+			r.THPSplitPage = val
 		}
+	}
+	data.Reclaim = r
+}
+
+// parseVmstatRaw returns key vmstat counters as a map for rate computation.
+func (c *MemoryCollector) parseVmstatRaw() map[string]int64 {
+	f, err := os.Open(filepath.Join(c.procRoot, "vmstat"))
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	m := make(map[string]int64)
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) != 2 {
+			continue
+		}
+		switch fields[0] {
+		case "pgscan_direct", "compact_stall", "thp_split_page", "allocstall_normal":
+			m[fields[0]], _ = strconv.ParseInt(fields[1], 10, 64)
+		}
+	}
+	return m
+}
+
+// computeReclaimRates computes per-second rates for reclaim counters.
+func (c *MemoryCollector) computeReclaimRates(data *model.MemoryData, v1, v2 map[string]int64, secs float64) {
+	if data == nil || data.Reclaim == nil || v1 == nil || v2 == nil || secs <= 0 {
+		return
+	}
+	if d := v2["pgscan_direct"] - v1["pgscan_direct"]; d > 0 {
+		data.Reclaim.DirectReclaimRate = float64(d) / secs
+	}
+	if d := v2["compact_stall"] - v1["compact_stall"]; d > 0 {
+		data.Reclaim.CompactStallRate = float64(d) / secs
+	}
+	if d := v2["thp_split_page"] - v1["thp_split_page"]; d > 0 {
+		data.Reclaim.THPSplitRate = float64(d) / secs
 	}
 }
 
@@ -183,6 +270,21 @@ func (c *MemoryCollector) readTHPEnabled() string {
 		return ""
 	}
 	// Format: "always [madvise] never" — active in brackets
+	content := string(data)
+	if idx := strings.Index(content, "["); idx >= 0 {
+		end := strings.Index(content[idx:], "]")
+		if end > 0 {
+			return content[idx+1 : idx+end]
+		}
+	}
+	return strings.TrimSpace(content)
+}
+
+func (c *MemoryCollector) readTHPDefrag() string {
+	data, err := os.ReadFile(filepath.Join(c.sysRoot, "kernel", "mm", "transparent_hugepage", "defrag"))
+	if err != nil {
+		return ""
+	}
 	content := string(data)
 	if idx := strings.Index(content, "["); idx >= 0 {
 		end := strings.Index(content[idx:], "]")
@@ -287,6 +389,25 @@ func (c *MemoryCollector) parseNUMAStats() []model.NUMANode {
 				}
 			}
 			f.Close()
+		}
+
+		// Compute miss ratio
+		total := node.NumaHit + node.NumaMiss
+		if total > 0 {
+			node.MissRatio = float64(node.NumaMiss) / float64(total) * 100
+		}
+
+		// Distance matrix
+		if distData, err := os.ReadFile(filepath.Join(nodePath, "distance")); err == nil {
+			for _, s := range strings.Fields(strings.TrimSpace(string(distData))) {
+				v, _ := strconv.Atoi(s)
+				node.Distance = append(node.Distance, v)
+			}
+		}
+
+		// CPU list
+		if cpuData, err := os.ReadFile(filepath.Join(nodePath, "cpulist")); err == nil {
+			node.CPUs = strings.TrimSpace(string(cpuData))
 		}
 
 		nodes = append(nodes, node)

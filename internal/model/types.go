@@ -190,18 +190,84 @@ type MemoryData struct {
 	PSISome10            float64          `json:"psi_some_10,omitempty"`
 	PSISome60            float64          `json:"psi_some_60,omitempty"`
 	THPEnabled           string           `json:"thp_enabled,omitempty"`
+	THPDefrag            string           `json:"thp_defrag,omitempty"`
 	MinFreeKbytes        int              `json:"min_free_kbytes,omitempty"`
 	NUMANodes            []NUMANode       `json:"numa_nodes,omitempty"`
 	BuddyInfo            map[string][]int `json:"buddy_info,omitempty"`
+	// Page reclaim and compaction from /proc/vmstat
+	Reclaim *ReclaimStats `json:"reclaim,omitempty"`
+	// Additional vm.* sysctls
+	WatermarkScaleFactor  int `json:"watermark_scale_factor,omitempty"`
+	DirtyExpireCentisecs  int `json:"dirty_expire_centisecs,omitempty"`
+	DirtyWritebackCentisecs int `json:"dirty_writeback_centisecs,omitempty"`
+	ZoneReclaimMode       int `json:"zone_reclaim_mode,omitempty"`
+	SchedNumaBalancing    int `json:"sched_numa_balancing,omitempty"`
+}
+
+// ReclaimStats holds page reclaim, compaction, and THP counters from /proc/vmstat.
+type ReclaimStats struct {
+	// Page reclaim
+	PgscanDirect    int64 `json:"pgscan_direct"`
+	PgscanKswapd    int64 `json:"pgscan_kswapd"`
+	PgstealDirect   int64 `json:"pgsteal_direct"`
+	PgstealKswapd   int64 `json:"pgsteal_kswapd"`
+	AllocstallNormal int64 `json:"allocstall_normal"`
+	AllocstallDMA    int64 `json:"allocstall_dma,omitempty"`
+	AllocstallMovable int64 `json:"allocstall_movable,omitempty"`
+	// Compaction
+	CompactStall   int64 `json:"compact_stall"`
+	CompactSuccess int64 `json:"compact_success"`
+	CompactFail    int64 `json:"compact_fail"`
+	// THP activity
+	THPFaultAlloc    int64 `json:"thp_fault_alloc"`
+	THPCollapseAlloc int64 `json:"thp_collapse_alloc"`
+	THPSplitPage     int64 `json:"thp_split_page"`
+	// Rate fields (two-point delta / interval)
+	DirectReclaimRate float64 `json:"direct_reclaim_rate,omitempty"`
+	CompactStallRate  float64 `json:"compact_stall_rate,omitempty"`
+	THPSplitRate      float64 `json:"thp_split_rate,omitempty"`
 }
 
 type NUMANode struct {
-	Node          int   `json:"node"`
-	MemTotalBytes int64 `json:"mem_total_bytes"`
-	MemFreeBytes  int64 `json:"mem_free_bytes"`
-	NumaHit       int64 `json:"numa_hit"`
-	NumaMiss      int64 `json:"numa_miss"`
-	NumaForeign   int64 `json:"numa_foreign"`
+	Node          int      `json:"node"`
+	MemTotalBytes int64    `json:"mem_total_bytes"`
+	MemFreeBytes  int64    `json:"mem_free_bytes"`
+	NumaHit       int64    `json:"numa_hit"`
+	NumaMiss      int64    `json:"numa_miss"`
+	NumaForeign   int64    `json:"numa_foreign"`
+	MissRatio     float64  `json:"miss_ratio,omitempty"`
+	Distance      []int    `json:"distance,omitempty"`
+	CPUs          string   `json:"cpus,omitempty"`
+}
+
+// GPUDevice represents a detected GPU.
+type GPUDevice struct {
+	Index       int    `json:"index"`
+	Name        string `json:"name"`
+	Driver      string `json:"driver,omitempty"`
+	PCIBus      string `json:"pci_bus"`
+	NUMANode    int    `json:"numa_node"`
+	MemoryTotal int64  `json:"memory_total_mb,omitempty"`
+	MemoryUsed  int64  `json:"memory_used_mb,omitempty"`
+	UtilGPU     int    `json:"utilization_gpu_pct,omitempty"`
+	UtilMemory  int    `json:"utilization_memory_pct,omitempty"`
+	Temperature int    `json:"temperature_c,omitempty"`
+	PowerWatts  int    `json:"power_watts,omitempty"`
+}
+
+// PCIeTopology holds GPU and NIC NUMA affinity information.
+type PCIeTopology struct {
+	GPUs              []GPUDevice       `json:"gpus,omitempty"`
+	NICNUMAMap        map[string]int    `json:"nic_numa_map,omitempty"`
+	CrossNUMAPairs    []CrossNUMAPair   `json:"cross_numa_pairs,omitempty"`
+}
+
+// CrossNUMAPair flags a GPU-NIC pair on different NUMA nodes.
+type CrossNUMAPair struct {
+	GPU      string `json:"gpu"`
+	GPUNode  int    `json:"gpu_numa_node"`
+	NIC      string `json:"nic"`
+	NICNode  int    `json:"nic_numa_node"`
 }
 
 type DiskDevice struct {

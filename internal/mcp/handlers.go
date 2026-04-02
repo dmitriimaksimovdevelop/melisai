@@ -642,4 +642,62 @@ Block I/O p99 latency for rotational disks is elevated.
 - Check biolatency histogram for bimodal distribution.
 - Consider migrating hot data to SSD.
 - Review I/O scheduler (deadline/mq-deadline for HDD).`,
+
+	"direct_reclaim_rate": `**Direct Page Reclaim Active**
+Applications are blocking while the kernel reclaims memory pages (pgscan_direct).
+**Root Causes:**
+- Free memory dropped below watermarks, kswapd can't keep up
+- vm.min_free_kbytes too low for allocation burst rate
+- Large memory consumers exhausting page cache
+**Recommendations:**
+- Increase vm.watermark_scale_factor to trigger kswapd earlier
+- Increase vm.min_free_kbytes to maintain larger free pool
+- Check for memory leaks or oversized caches`,
+
+	"compaction_stall_rate": `**Memory Compaction Stalls**
+Memory allocation is blocking while the kernel compacts (defragments) memory.
+**Root Causes:**
+- Memory fragmented — no contiguous pages for higher-order allocations
+- THP (Transparent Huge Pages) requesting 2MB contiguous blocks
+- Long-running system without periodic defragmentation
+**Recommendations:**
+- Switch THP to madvise mode: echo madvise > /sys/kernel/mm/transparent_hugepage/enabled
+- Set THP defrag to defer+madvise: echo defer+madvise > /sys/kernel/mm/transparent_hugepage/defrag
+- Trigger manual compaction: echo 1 > /proc/sys/vm/compact_memory`,
+
+	"thp_split_rate": `**THP Split Rate High**
+Transparent Huge Pages are being split back into small 4KB pages at a high rate.
+**Root Causes:**
+- Partial page access patterns breaking huge pages
+- Memory pressure forcing THP demotion
+- Workload pattern incompatible with THP (e.g., fork-heavy, partial mmap)
+**Recommendations:**
+- Switch THP to madvise: only apps that opt-in get huge pages
+- Use madvise(MADV_HUGEPAGE) in application code for specific regions
+- THP splits cause TLB invalidation storms — monitor dTLB-load-misses with perf`,
+
+	"numa_miss_ratio": `**NUMA Memory Miss Ratio High**
+Processes are accessing memory allocated on a different NUMA node, causing 30-50% latency penalty.
+**Root Causes:**
+- Process migrated to different NUMA node by scheduler
+- Memory allocated before process was pinned to CPU
+- sched_numa_balancing disabled or ineffective
+**Recommendations:**
+- Pin critical processes to NUMA node: numactl --cpunodebind=N --membind=N
+- Enable NUMA balancing: sysctl -w kernel.sched_numa_balancing=1
+- For databases: use numactl --interleave=all to spread evenly`,
+
+	"gpu_nic_cross_numa": `**GPU-NIC Cross-NUMA Topology**
+A GPU and NIC are on different NUMA nodes, causing PCIe DMA transfers to cross the interconnect.
+**Root Causes:**
+- Server hardware design placed GPU and NIC on different CPU sockets
+- PCIe slot assignment not optimized for GPU-Direct workloads
+**Impact:**
+- GPU-Direct RDMA throughput reduced by 30-50%
+- Additional latency for every DMA transfer between GPU and NIC
+**Recommendations:**
+- Move NIC to a PCIe slot on the same NUMA node as the GPU
+- If physical move impossible: pin application to the GPU's NUMA node
+- Use nvidia-smi topo --matrix to verify topology
+- For RDMA: ensure ib_device and GPU share NUMA node`,
 }

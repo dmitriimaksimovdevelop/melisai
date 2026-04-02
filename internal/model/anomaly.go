@@ -128,6 +128,92 @@ func DefaultThresholds() []Threshold {
 				return fmt.Sprintf("Memory PSI pressure: %.1f%% (some tasks stalling)", v)
 			},
 		},
+		// Direct reclaim rate (application-blocking page reclaim)
+		{
+			Metric: "direct_reclaim_rate", Category: "memory",
+			Warning: 10, Critical: 1000,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["memory"]; ok {
+					for _, res := range results {
+						if mem, ok := res.Data.(*MemoryData); ok && mem.Reclaim != nil {
+							if mem.Reclaim.DirectReclaimRate > 0 {
+								return mem.Reclaim.DirectReclaimRate, true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("Direct reclaim: %.0f pages/s (applications blocked waiting for memory)", v)
+			},
+		},
+		// Compaction stall rate (allocation blocked on defragmentation)
+		{
+			Metric: "compaction_stall_rate", Category: "memory",
+			Warning: 1, Critical: 100,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["memory"]; ok {
+					for _, res := range results {
+						if mem, ok := res.Data.(*MemoryData); ok && mem.Reclaim != nil {
+							if mem.Reclaim.CompactStallRate > 0 {
+								return mem.Reclaim.CompactStallRate, true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("Compaction stalls: %.1f/s (memory fragmented, allocation latency)", v)
+			},
+		},
+		// THP split rate (huge pages being broken apart — performance-killing)
+		{
+			Metric: "thp_split_rate", Category: "memory",
+			Warning: 1, Critical: 100,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["memory"]; ok {
+					for _, res := range results {
+						if mem, ok := res.Data.(*MemoryData); ok && mem.Reclaim != nil {
+							if mem.Reclaim.THPSplitRate > 0 {
+								return mem.Reclaim.THPSplitRate, true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("THP splits: %.1f/s (huge pages breaking apart — TLB thrashing)", v)
+			},
+		},
+		// NUMA miss ratio (memory accessed from wrong node)
+		{
+			Metric: "numa_miss_ratio", Category: "memory",
+			Warning: 5, Critical: 20,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["memory"]; ok {
+					for _, res := range results {
+						if mem, ok := res.Data.(*MemoryData); ok {
+							var maxMiss float64
+							for _, node := range mem.NUMANodes {
+								if node.MissRatio > maxMiss {
+									maxMiss = node.MissRatio
+								}
+							}
+							if maxMiss > 0 {
+								return maxMiss, true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("NUMA miss ratio: %.1f%% (cross-node memory access — 30-50%% latency penalty)", v)
+			},
+		},
 		// Network
 		{
 			Metric: "tcp_retransmits", Category: "network",
@@ -635,6 +721,26 @@ func DefaultThresholds() []Threshold {
 			},
 			Message: func(v float64) string {
 				return fmt.Sprintf("Listen queue fill: %.0f%% (accept queue near capacity — add SO_REUSEPORT or more worker threads)", v)
+			},
+		},
+		// GPU-NIC cross-NUMA (PCIe topology mismatch)
+		{
+			Metric: "gpu_nic_cross_numa", Category: "system",
+			Warning: 1, Critical: 1,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["system"]; ok {
+					for _, res := range results {
+						if topo, ok := res.Data.(*PCIeTopology); ok {
+							if len(topo.CrossNUMAPairs) > 0 {
+								return float64(len(topo.CrossNUMAPairs)), true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("GPU-NIC cross-NUMA: %.0f pair(s) on different NUMA nodes (PCIe DMA penalty)", v)
 			},
 		},
 	}

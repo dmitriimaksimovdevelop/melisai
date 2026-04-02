@@ -368,6 +368,7 @@ func RegisterCollectors(cfg collector.CollectConfig) []collector.Collector {
 		collector.NewNetworkCollector(procRoot),
 		collector.NewProcessCollector(procRoot),
 		collector.NewContainerCollector(procRoot, sysRoot),
+		collector.NewGPUCollector(sysRoot),
 	}
 
 	// Map Tier 1 names for deduplication

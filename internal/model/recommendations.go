@@ -108,6 +108,86 @@ func GenerateRecommendations(report *Report) []Recommendation {
 					})
 					priority++
 				}
+				// Direct reclaim pressure — increase watermarks
+				if mem.Reclaim != nil && mem.Reclaim.DirectReclaimRate > 0 {
+					recs = append(recs, Recommendation{
+						Priority: priority,
+						Category: "memory",
+						Type:     "fix",
+						Title:    "Direct reclaim active — increase watermark reserves",
+						Commands: []string{
+							"sysctl -w vm.watermark_scale_factor=200",
+							"sysctl -w vm.min_free_kbytes=131072",
+						},
+						Persistent: []string{
+							"echo 'vm.watermark_scale_factor=200' >> /etc/sysctl.d/99-melisai.conf",
+							"echo 'vm.min_free_kbytes=131072' >> /etc/sysctl.d/99-melisai.conf",
+						},
+						ExpectedImpact: "Trigger kswapd earlier, prevent applications from blocking on page reclaim",
+						Evidence:       formatEvidence("direct_reclaim_rate=%.0f/s, pgscan_direct=%d, allocstall=%d", mem.Reclaim.DirectReclaimRate, mem.Reclaim.PgscanDirect, mem.Reclaim.AllocstallNormal),
+						Source:         "Linux VM subsystem, Brendan Gregg Systems Performance ch.7",
+					})
+					priority++
+				}
+				// THP splits — consider madvise mode
+				if mem.Reclaim != nil && mem.Reclaim.THPSplitRate > 1 && mem.THPEnabled == "always" {
+					recs = append(recs, Recommendation{
+						Priority: priority,
+						Category: "memory",
+						Type:     "fix",
+						Title:    "THP splits detected with THP=always — switch to madvise",
+						Commands: []string{
+							"echo madvise > /sys/kernel/mm/transparent_hugepage/enabled",
+							"echo defer+madvise > /sys/kernel/mm/transparent_hugepage/defrag",
+						},
+						ExpectedImpact: "Eliminate THP compaction stalls and TLB thrashing from forced splits",
+						Evidence:       formatEvidence("thp_split_rate=%.1f/s, thp_enabled=%s, thp_defrag=%s", mem.Reclaim.THPSplitRate, mem.THPEnabled, mem.THPDefrag),
+						Source:         "Linux THP documentation, PostgreSQL/MySQL best practices",
+					})
+					priority++
+				}
+				// NUMA miss ratio
+				for _, node := range mem.NUMANodes {
+					if node.MissRatio > 5 {
+						recs = append(recs, Recommendation{
+							Priority: priority,
+							Category: "memory",
+							Type:     "fix",
+							Title:    fmt.Sprintf("NUMA node %d has %.1f%% miss ratio — cross-node memory access", node.Node, node.MissRatio),
+							Commands: []string{
+								"# Pin critical processes to correct NUMA node:",
+								fmt.Sprintf("# numactl --cpunodebind=%d --membind=%d <command>", node.Node, node.Node),
+								"# Or enable automatic NUMA balancing:",
+								"sysctl -w kernel.sched_numa_balancing=1",
+							},
+							Persistent: []string{
+								"echo 'kernel.sched_numa_balancing=1' >> /etc/sysctl.d/99-melisai.conf",
+							},
+							ExpectedImpact: "Reduce cross-NUMA memory access (30-50% latency penalty per hop)",
+							Evidence:       formatEvidence("node%d: miss_ratio=%.1f%%, hit=%d, miss=%d, cpus=%s", node.Node, node.MissRatio, node.NumaHit, node.NumaMiss, node.CPUs),
+							Source:         "Linux NUMA, Brendan Gregg Systems Performance ch.7",
+						})
+						priority++
+						break // one NUMA recommendation is enough
+					}
+				}
+				// Compaction stalls + dirty writeback too slow
+				if mem.Reclaim != nil && mem.Reclaim.CompactStallRate > 1 {
+					recs = append(recs, Recommendation{
+						Priority: priority,
+						Category: "memory",
+						Type:     "fix",
+						Title:    "Compaction stalls detected — memory fragmented",
+						Commands: []string{
+							"echo 1 > /proc/sys/vm/compact_memory",
+							"sysctl -w vm.extfrag_threshold=500",
+						},
+						ExpectedImpact: "Reduce allocation latency from memory fragmentation",
+						Evidence:       formatEvidence("compact_stall_rate=%.1f/s, compact_stall=%d, compact_fail=%d", mem.Reclaim.CompactStallRate, mem.Reclaim.CompactStall, mem.Reclaim.CompactFail),
+						Source:         "Linux VM compaction, kernel mm documentation",
+					})
+					priority++
+				}
 			}
 		}
 	}
