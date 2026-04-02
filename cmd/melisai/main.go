@@ -37,9 +37,29 @@ Collects metrics via BPF/eBPF tools (Brendan Gregg's ecosystem),
 procfs/sysfs, and standard utilities. Produces structured JSON
 reports optimized for AI-driven diagnostics and optimization.
 
-Tier 1: /proc, /sys, ss, dmesg (always works, no root)
-Tier 2: BCC tools — runqlat, biolatency, tcpconnlat, etc. (needs root + tools)
-Tier 3: Native eBPF (cilium/ebpf) — zero dependencies (needs root + kernel ≥ 4.15)`,
+Data collection tiers (automatic fallback):
+
+  Tier 1: /proc, /sys, ss, ethtool, dmesg (always works, no root)
+          CPU, memory, disk, network (deep: conntrack, softnet, IRQ,
+          NIC ring buffers, TCP extended stats), process, container.
+  Tier 2: 67 BCC tools — runqlat, biolatency, tcpconnlat, etc.
+          (needs root + bcc-tools installed)
+  Tier 3: Native eBPF (cilium/ebpf) — tcpretrans kprobe
+          (needs root + kernel ≥ 5.8 + BTF)
+
+Network deep diagnostics (Tier 1):
+  - Conntrack table usage and drops (/proc/sys/net/netfilter/)
+  - Softnet per-CPU stats: drops, time_squeeze (/proc/net/softnet_stat)
+  - IRQ distribution: NET_RX delta per CPU (/proc/softirqs)
+  - NIC hardware: driver, speed, MTU, queues, ring buffer, RPS, bond
+  - TCP extended: ListenOverflows, ListenDrops, PruneCalled, TCPAbortOnMemory
+  - UDP stats: RcvbufErrors, SndbufErrors (/proc/net/snmp)
+  - Socket memory: orphans, TCP mem pages (/proc/net/sockstat)
+  - 20+ sysctls: rmem_max, netdev_max_backlog, ip_local_port_range,
+    tcp_fastopen, tcp_notsent_lowat, default_qdisc, and more
+
+29 anomaly detection rules, health score (0-100), actionable recommendations.
+MCP server for interactive diagnostics from Claude Desktop / Cursor.`,
 		Version: version,
 	}
 
@@ -60,7 +80,22 @@ Tier 3: Native eBPF (cilium/ebpf) — zero dependencies (needs root + kernel ≥
 	collectCmd := &cobra.Command{
 		Use:   "collect",
 		Short: "Collect system performance metrics",
-		Long:  "Run all available collectors and produce a structured JSON report.",
+		Long: `Run all available collectors and produce a structured JSON report.
+
+Collectors run in two phases to avoid observer effect:
+  Phase 1: Tier 1 (procfs/sysfs) — CPU, memory, disk, network, process, container
+  Phase 2: Tier 2/3 (BCC/eBPF) — histograms, events, stack traces
+
+Network collector includes deep diagnostics:
+  conntrack, softnet stats, IRQ distribution, NIC hardware details,
+  TCP extended counters (ListenOverflows, PruneCalled, etc.)
+
+Profiles: quick (10s), standard (30s), deep (60s)
+
+Examples:
+  melisai collect --profile quick -o report.json
+  melisai collect --profile standard --focus network -o net.json
+  melisai collect --profile deep --pid 12345 -o app.json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := collector.DefaultConfig()
 			cfg.Profile = collectProfile

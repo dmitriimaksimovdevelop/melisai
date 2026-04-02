@@ -3,6 +3,8 @@ package collector
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -109,36 +111,48 @@ func TestParseNetDevMissingFile(t *testing.T) {
 
 func TestParseSNMP(t *testing.T) {
 	c := NewNetworkCollector("../../testdata/proc")
-	tcp := c.parseSNMP()
+	data := &model.NetworkData{}
+	c.parseSNMP(data)
 
-	if tcp == nil {
-		t.Fatal("parseSNMP returned nil")
+	if data.TCP == nil {
+		t.Fatal("parseSNMP returned nil TCP")
 	}
-	if tcp.ActiveOpens != 50000 {
-		t.Errorf("ActiveOpens = %d, want 50000", tcp.ActiveOpens)
+	if data.TCP.ActiveOpens != 50000 {
+		t.Errorf("ActiveOpens = %d, want 50000", data.TCP.ActiveOpens)
 	}
-	if tcp.PassiveOpens != 30000 {
-		t.Errorf("PassiveOpens = %d, want 30000", tcp.PassiveOpens)
+	if data.TCP.PassiveOpens != 30000 {
+		t.Errorf("PassiveOpens = %d, want 30000", data.TCP.PassiveOpens)
 	}
-	if tcp.CurrEstab != 1500 {
-		t.Errorf("CurrEstab = %d, want 1500", tcp.CurrEstab)
+	if data.TCP.CurrEstab != 1500 {
+		t.Errorf("CurrEstab = %d, want 1500", data.TCP.CurrEstab)
 	}
-	if tcp.RetransSegs != 500 {
-		t.Errorf("RetransSegs = %d, want 500", tcp.RetransSegs)
+	if data.TCP.RetransSegs != 500 {
+		t.Errorf("RetransSegs = %d, want 500", data.TCP.RetransSegs)
 	}
-	if tcp.InErrs != 25 {
-		t.Errorf("InErrs = %d, want 25", tcp.InErrs)
+	if data.TCP.InErrs != 25 {
+		t.Errorf("InErrs = %d, want 25", data.TCP.InErrs)
 	}
-	if tcp.OutRsts != 300 {
-		t.Errorf("OutRsts = %d, want 300", tcp.OutRsts)
+	if data.TCP.OutRsts != 300 {
+		t.Errorf("OutRsts = %d, want 300", data.TCP.OutRsts)
+	}
+	// UDP stats parsed in same pass
+	if data.UDPRcvbufErrors != 42 {
+		t.Errorf("UDPRcvbufErrors = %d, want 42", data.UDPRcvbufErrors)
+	}
+	if data.UDPSndbufErrors != 3 {
+		t.Errorf("UDPSndbufErrors = %d, want 3", data.UDPSndbufErrors)
+	}
+	if data.UDPInErrors != 10 {
+		t.Errorf("UDPInErrors = %d, want 10", data.UDPInErrors)
 	}
 }
 
 func TestParseSNMPMissingFile(t *testing.T) {
 	c := NewNetworkCollector("/nonexistent/path")
-	tcp := c.parseSNMP()
-	if tcp != nil {
-		t.Errorf("parseSNMP with missing file: got %v, want nil", tcp)
+	data := &model.NetworkData{}
+	c.parseSNMP(data)
+	if data.TCP != nil {
+		t.Errorf("parseSNMP with missing file: got TCP %v, want nil", data.TCP)
 	}
 }
 
@@ -204,19 +218,21 @@ func TestRetransmitRateCalculation(t *testing.T) {
 	c := NewNetworkCollector("../../testdata/proc")
 
 	// Two reads from the same static file yield identical counters.
-	snmp1 := c.parseSNMP()
-	snmp2 := c.parseSNMP()
-	if snmp1 == nil || snmp2 == nil {
-		t.Fatal("parseSNMP returned nil")
+	d1 := &model.NetworkData{}
+	d2 := &model.NetworkData{}
+	c.parseSNMP(d1)
+	c.parseSNMP(d2)
+	if d1.TCP == nil || d2.TCP == nil {
+		t.Fatal("parseSNMP returned nil TCP")
 	}
-	if snmp1.RetransSegs != snmp2.RetransSegs {
+	if d1.TCP.RetransSegs != d2.TCP.RetransSegs {
 		t.Fatalf("same file should give same RetransSegs, got %d vs %d",
-			snmp1.RetransSegs, snmp2.RetransSegs)
+			d1.TCP.RetransSegs, d2.TCP.RetransSegs)
 	}
 
 	// Simulate a real delta: snmp1=400, snmp2=500, interval=1s => rate=100.
-	snmp1.RetransSegs = 400
-	retransDelta := snmp2.RetransSegs - snmp1.RetransSegs // 500-400=100
+	d1.TCP.RetransSegs = 400
+	retransDelta := d2.TCP.RetransSegs - d1.TCP.RetransSegs // 500-400=100
 	if retransDelta < 0 {
 		retransDelta = 0
 	}
@@ -227,8 +243,8 @@ func TestRetransmitRateCalculation(t *testing.T) {
 	}
 
 	// Counter-wrap protection: when second sample is smaller, delta is clamped to 0.
-	snmp1.RetransSegs = 1000
-	retransDelta = snmp2.RetransSegs - snmp1.RetransSegs // 500-1000=-500
+	d1.TCP.RetransSegs = 1000
+	retransDelta = d2.TCP.RetransSegs - d1.TCP.RetransSegs // 500-1000=-500
 	if retransDelta < 0 {
 		retransDelta = 0
 	}
@@ -238,8 +254,8 @@ func TestRetransmitRateCalculation(t *testing.T) {
 	}
 
 	// Zero delta => zero rate.
-	snmp1.RetransSegs = 500
-	retransDelta = snmp2.RetransSegs - snmp1.RetransSegs // 500-500=0
+	d1.TCP.RetransSegs = 500
+	retransDelta = d2.TCP.RetransSegs - d1.TCP.RetransSegs // 500-500=0
 	if retransDelta < 0 {
 		retransDelta = 0
 	}
@@ -346,6 +362,343 @@ func TestContainerCategoryRegression(t *testing.T) {
 	got := c.Category()
 	if got != "container" {
 		t.Errorf("ContainerCollector.Category() = %q, want %q (regression: bug #2)", got, "container")
+	}
+}
+
+// ---------- parseConntrack ----------
+
+func TestParseConntrack(t *testing.T) {
+	c := NewNetworkCollector("../../testdata/proc")
+	ct := c.parseConntrack()
+
+	if ct == nil {
+		t.Fatal("parseConntrack returned nil")
+	}
+	if ct.Count != 15000 {
+		t.Errorf("Count = %d, want 15000", ct.Count)
+	}
+	if ct.Max != 65536 {
+		t.Errorf("Max = %d, want 65536", ct.Max)
+	}
+	expectedPct := float64(15000) / float64(65536) * 100
+	if ct.UsagePct < expectedPct-0.1 || ct.UsagePct > expectedPct+0.1 {
+		t.Errorf("UsagePct = %.2f, want ~%.2f", ct.UsagePct, expectedPct)
+	}
+	if ct.Drops != 5 {
+		t.Errorf("Drops = %d, want 5", ct.Drops)
+	}
+	if ct.EarlyDrop != 2 {
+		t.Errorf("EarlyDrop = %d, want 2", ct.EarlyDrop)
+	}
+}
+
+func TestParseConntrackNotLoaded(t *testing.T) {
+	c := NewNetworkCollector("/nonexistent/path")
+	ct := c.parseConntrack()
+	if ct != nil {
+		t.Errorf("parseConntrack with missing files: got %v, want nil", ct)
+	}
+}
+
+// ---------- parseSoftnetStat ----------
+
+func TestParseSoftnetStat(t *testing.T) {
+	c := NewNetworkCollector("../../testdata/proc")
+	stats := c.parseSoftnetStat()
+
+	if len(stats) != 3 {
+		t.Fatalf("parseSoftnetStat: got %d CPUs, want 3", len(stats))
+	}
+
+	// CPU 0: 0x0000beef=48879 processed, 0x00000002=2 dropped, 0x00000005=5 time_squeeze
+	if stats[0].CPU != 0 {
+		t.Errorf("stats[0].CPU = %d, want 0", stats[0].CPU)
+	}
+	if stats[0].Processed != 0xbeef {
+		t.Errorf("stats[0].Processed = %d, want %d", stats[0].Processed, 0xbeef)
+	}
+	if stats[0].Dropped != 2 {
+		t.Errorf("stats[0].Dropped = %d, want 2", stats[0].Dropped)
+	}
+	if stats[0].TimeSqueeze != 5 {
+		t.Errorf("stats[0].TimeSqueeze = %d, want 5", stats[0].TimeSqueeze)
+	}
+
+	// CPU 1: 0x0000abcd=43981, 0 dropped, 3 time_squeeze
+	if stats[1].Dropped != 0 {
+		t.Errorf("stats[1].Dropped = %d, want 0", stats[1].Dropped)
+	}
+
+	// CPU 2: 0x0000ffff=65535, 1 dropped, 10 time_squeeze
+	if stats[2].Processed != 0xffff {
+		t.Errorf("stats[2].Processed = %d, want %d", stats[2].Processed, 0xffff)
+	}
+	if stats[2].Dropped != 1 {
+		t.Errorf("stats[2].Dropped = %d, want 1", stats[2].Dropped)
+	}
+}
+
+func TestParseSoftnetStatMissing(t *testing.T) {
+	c := NewNetworkCollector("/nonexistent/path")
+	stats := c.parseSoftnetStat()
+	if stats != nil {
+		t.Errorf("parseSoftnetStat with missing file: got %v, want nil", stats)
+	}
+}
+
+// ---------- readNetRxSoftirqs ----------
+
+func TestReadNetRxSoftirqs(t *testing.T) {
+	c := NewNetworkCollector("../../testdata/proc")
+	counts := c.readNetRxSoftirqs()
+
+	if len(counts) != 3 {
+		t.Fatalf("readNetRxSoftirqs: got %d CPUs, want 3", len(counts))
+	}
+	// NET_RX: 80000 50000 30000
+	if counts[0] != 80000 {
+		t.Errorf("counts[0] = %d, want 80000", counts[0])
+	}
+	if counts[1] != 50000 {
+		t.Errorf("counts[1] = %d, want 50000", counts[1])
+	}
+	if counts[2] != 30000 {
+		t.Errorf("counts[2] = %d, want 30000", counts[2])
+	}
+}
+
+func TestReadNetRxSoftirqsMissing(t *testing.T) {
+	c := NewNetworkCollector("/nonexistent/path")
+	counts := c.readNetRxSoftirqs()
+	if counts != nil {
+		t.Errorf("readNetRxSoftirqs with missing file: got %v, want nil", counts)
+	}
+}
+
+// ---------- computeIRQDistribution ----------
+
+func TestComputeIRQDistribution(t *testing.T) {
+	c := NewNetworkCollector("../../testdata/proc")
+	// Use static test data — sample1 slightly less than what's in testdata/proc/softirqs
+	sample1 := []int64{79000, 49500, 29800}
+	dist := c.computeIRQDistribution(sample1)
+
+	if len(dist) != 3 {
+		t.Fatalf("computeIRQDistribution: got %d CPUs, want 3", len(dist))
+	}
+	// Delta: 80000-79000=1000, 50000-49500=500, 30000-29800=200
+	if dist[0].NetRxDelta != 1000 {
+		t.Errorf("dist[0].NetRxDelta = %d, want 1000", dist[0].NetRxDelta)
+	}
+	if dist[1].NetRxDelta != 500 {
+		t.Errorf("dist[1].NetRxDelta = %d, want 500", dist[1].NetRxDelta)
+	}
+	if dist[2].NetRxDelta != 200 {
+		t.Errorf("dist[2].NetRxDelta = %d, want 200", dist[2].NetRxDelta)
+	}
+}
+
+func TestComputeIRQDistributionNilSample(t *testing.T) {
+	c := NewNetworkCollector("../../testdata/proc")
+	dist := c.computeIRQDistribution(nil)
+	if dist != nil {
+		t.Errorf("computeIRQDistribution(nil) = %v, want nil", dist)
+	}
+}
+
+// ---------- parseNetstat ----------
+
+func TestParseNetstat(t *testing.T) {
+	c := NewNetworkCollector("../../testdata/proc")
+	data := &model.NetworkData{}
+	c.parseNetstat(data)
+
+	if data.ListenOverflows != 150 {
+		t.Errorf("ListenOverflows = %d, want 150", data.ListenOverflows)
+	}
+	if data.ListenDrops != 200 {
+		t.Errorf("ListenDrops = %d, want 200", data.ListenDrops)
+	}
+	if data.TCPAbortOnMemory != 7 {
+		t.Errorf("TCPAbortOnMemory = %d, want 7", data.TCPAbortOnMemory)
+	}
+	if data.TCPOFOQueue != 500 {
+		t.Errorf("TCPOFOQueue = %d, want 500", data.TCPOFOQueue)
+	}
+	if data.PruneCalled != 42 {
+		t.Errorf("PruneCalled = %d, want 42", data.PruneCalled)
+	}
+}
+
+func TestParseNetstatMissing(t *testing.T) {
+	c := NewNetworkCollector("/nonexistent/path")
+	data := &model.NetworkData{}
+	c.parseNetstat(data)
+	// Should not panic; all values remain 0.
+	if data.ListenOverflows != 0 {
+		t.Errorf("ListenOverflows = %d, want 0", data.ListenOverflows)
+	}
+}
+
+// ---------- parseRingBuffer ----------
+
+func TestParseRingBuffer(t *testing.T) {
+	c := NewNetworkCollector("../../testdata/proc")
+	iface := &model.NetworkInterface{Name: "eth0"}
+
+	output := `Ring parameters for eth0:
+Pre-set maximums:
+RX:		4096
+RX Mini:	0
+RX Jumbo:	0
+TX:		4096
+Current hardware settings:
+RX:		256
+RX Mini:	0
+RX Jumbo:	0
+TX:		256
+`
+	c.parseRingBuffer(output, iface)
+
+	if iface.RingRxMax != 4096 {
+		t.Errorf("RingRxMax = %d, want 4096", iface.RingRxMax)
+	}
+	if iface.RingRxCur != 256 {
+		t.Errorf("RingRxCur = %d, want 256", iface.RingRxCur)
+	}
+}
+
+func TestParseRingBufferEmpty(t *testing.T) {
+	c := NewNetworkCollector("../../testdata/proc")
+	iface := &model.NetworkInterface{Name: "eth0"}
+	c.parseRingBuffer("", iface)
+	if iface.RingRxMax != 0 || iface.RingRxCur != 0 {
+		t.Errorf("parseRingBuffer empty: max=%d, cur=%d, want 0,0", iface.RingRxMax, iface.RingRxCur)
+	}
+}
+
+// ---------- parseSockstat ----------
+
+func TestParseSockstat(t *testing.T) {
+	c := NewNetworkCollector("../../testdata/proc")
+	data := &model.NetworkData{}
+	c.parseSockstat(data)
+
+	if data.TCPSocketsInUse != 500 {
+		t.Errorf("TCPSocketsInUse = %d, want 500", data.TCPSocketsInUse)
+	}
+	if data.TCPOrphans != 12 {
+		t.Errorf("TCPOrphans = %d, want 12", data.TCPOrphans)
+	}
+	if data.TCPMemPages != 150 {
+		t.Errorf("TCPMemPages = %d, want 150", data.TCPMemPages)
+	}
+	if data.UDPSocketsInUse != 50 {
+		t.Errorf("UDPSocketsInUse = %d, want 50", data.UDPSocketsInUse)
+	}
+}
+
+func TestParseSockstatMissing(t *testing.T) {
+	c := NewNetworkCollector("/nonexistent/path")
+	data := &model.NetworkData{}
+	c.parseSockstat(data)
+	if data.TCPSocketsInUse != 0 {
+		t.Errorf("TCPSocketsInUse = %d, want 0", data.TCPSocketsInUse)
+	}
+}
+
+// ---------- enrichNICDetails ----------
+
+func TestEnrichNICDetails(t *testing.T) {
+	// Create a fake sysfs tree
+	sysDir := t.TempDir()
+
+	// Create /sys/class/net/eth0/ structure
+	ethDir := filepath.Join(sysDir, "class", "net", "eth0")
+	os.MkdirAll(filepath.Join(ethDir, "queues", "rx-0"), 0755)
+	os.MkdirAll(filepath.Join(ethDir, "queues", "rx-1"), 0755)
+	os.MkdirAll(filepath.Join(ethDir, "queues", "tx-0"), 0755)
+	os.MkdirAll(filepath.Join(ethDir, "queues", "tx-1"), 0755)
+	os.MkdirAll(filepath.Join(ethDir, "queues", "tx-2"), 0755)
+
+	// Speed
+	os.WriteFile(filepath.Join(ethDir, "speed"), []byte("10000\n"), 0644)
+	// MTU
+	os.WriteFile(filepath.Join(ethDir, "mtu"), []byte("9001\n"), 0644)
+	// RPS cpus (enabled — non-zero mask)
+	os.WriteFile(filepath.Join(ethDir, "queues", "rx-0", "rps_cpus"), []byte("f\n"), 0644)
+
+	// Mock ethtool
+	mock := &mockCommandRunner{
+		outputs: map[string][]byte{
+			"ethtool -i eth0": []byte("driver: ixgbe\nversion: 5.1.0\nfirmware-version: 0x800035da\n"),
+			"ethtool -g eth0": []byte("Ring parameters for eth0:\nPre-set maximums:\nRX:\t\t4096\nTX:\t\t4096\nCurrent hardware settings:\nRX:\t\t512\nTX:\t\t512\n"),
+			"ethtool -S eth0": []byte("NIC statistics:\n     rx_discards: 150\n     rx_buf_errors: 5\n     tx_errors: 0\n"),
+		},
+		errors: map[string]error{},
+	}
+
+	c := NewNetworkCollectorFull("../../testdata/proc", sysDir, mock)
+
+	data := &model.NetworkData{
+		Interfaces: []model.NetworkInterface{
+			{Name: "eth0"},
+		},
+	}
+	c.enrichNICDetails(context.Background(), data)
+
+	eth := data.Interfaces[0]
+	if eth.Speed != "10000Mbps" {
+		t.Errorf("Speed = %q, want %q", eth.Speed, "10000Mbps")
+	}
+	if eth.MTU != 9001 {
+		t.Errorf("MTU = %d, want 9001", eth.MTU)
+	}
+	if eth.RxQueues != 2 {
+		t.Errorf("RxQueues = %d, want 2", eth.RxQueues)
+	}
+	if eth.TxQueues != 3 {
+		t.Errorf("TxQueues = %d, want 3", eth.TxQueues)
+	}
+	if !eth.RPSEnabled {
+		t.Error("RPSEnabled = false, want true")
+	}
+	if eth.Driver != "ixgbe" {
+		t.Errorf("Driver = %q, want %q", eth.Driver, "ixgbe")
+	}
+	if eth.RingRxMax != 4096 {
+		t.Errorf("RingRxMax = %d, want 4096", eth.RingRxMax)
+	}
+	if eth.RingRxCur != 512 {
+		t.Errorf("RingRxCur = %d, want 512", eth.RingRxCur)
+	}
+	if eth.RxDiscards != 150 {
+		t.Errorf("RxDiscards = %d, want 150", eth.RxDiscards)
+	}
+	if eth.RxBufErrors != 5 {
+		t.Errorf("RxBufErrors = %d, want 5", eth.RxBufErrors)
+	}
+}
+
+func TestEnrichNICDetailsSkipsLoopback(t *testing.T) {
+	mock := &mockCommandRunner{outputs: map[string][]byte{}, errors: map[string]error{}}
+	c := NewNetworkCollectorFull("../../testdata/proc", "/nonexistent", mock)
+
+	data := &model.NetworkData{
+		Interfaces: []model.NetworkInterface{
+			{Name: "lo"},
+			{Name: "veth1234"},
+			{Name: "docker0"},
+			{Name: "br-abcd"},
+		},
+	}
+	c.enrichNICDetails(context.Background(), data)
+
+	// None of these should be enriched
+	for _, iface := range data.Interfaces {
+		if iface.Driver != "" {
+			t.Errorf("interface %s should be skipped, got driver=%q", iface.Name, iface.Driver)
+		}
 	}
 }
 

@@ -2,128 +2,122 @@
 
 ## Overview
 
-Collecting metrics is useful, but automatically flagging problems is better. melisai's anomaly detection engine (`internal/model/anomaly.go`) applies 11 threshold rules based on Brendan Gregg's recommended values.
+Collecting metrics is useful, but automatically flagging problems is better. melisai's anomaly detection engine (`internal/model/anomaly.go`) applies 29 threshold rules based on Brendan Gregg's recommended values.
 
 ## Source File: anomaly.go
 
-- **Lines**: 260
-- **Functions**: ~15 (thresholds + evaluators)
+- **Functions**: ~25 (thresholds + evaluators)
 
 ## How It Works
 
 ### 1. Define Thresholds
 
 Each threshold has:
-- **Name**: Human-readable description
+- **Metric**: Machine-readable identifier
+- **Category**: Subsystem ("cpu", "memory", "disk", "network", "container")
 - **Warning level**: Something to investigate
 - **Critical level**: Immediate attention needed
 - **Evaluator**: A function that extracts the metric from collected data
 
 ```go
 type Threshold struct {
-    Name     string
-    Category string  // "cpu", "memory", "disk", "network"
-    Warning  float64
-    Critical float64
-    Unit     string  // "percent", "count", "ms"
-    Evaluate func(report *Report) float64
+    Metric    string
+    Category  string
+    Warning   float64
+    Critical  float64
+    Evaluator func(report *Report) (float64, bool)
+    Message   func(value float64) string
 }
 ```
 
-### 2. Default Thresholds
-
-```go
-func DefaultThresholds() []Threshold {
-    return []Threshold{
-        // CPU
-        {Name: "CPU utilization",     Warning: 80,  Critical: 95, Unit: "percent"},
-        {Name: "CPU saturation",      Warning: 50,  Critical: 100, Unit: "percent"},
-        {Name: "Load per CPU",        Warning: 1.5, Critical: 3.0, Unit: "ratio"},
-
-        // Memory
-        {Name: "Memory utilization",  Warning: 85,  Critical: 95, Unit: "percent"},
-        {Name: "Swap usage",          Warning: 20,  Critical: 50, Unit: "percent"},
-        {Name: "Memory PSI (some)",   Warning: 10,  Critical: 25, Unit: "percent"},
-
-        // Disk
-        {Name: "Disk utilization",    Warning: 80,  Critical: 95, Unit: "percent"},
-        {Name: "Disk saturation",     Warning: 8,   Critical: 32, Unit: "queue_depth"},
-
-        // Network
-        {Name: "TCP retransmissions", Warning: 1,   Critical: 5, Unit: "percent"},
-        {Name: "CLOSE_WAIT count",    Warning: 1,   Critical: 100, Unit: "count"},
-        {Name: "Interface errors",    Warning: 1,   Critical: 100, Unit: "count"},
-    }
-}
-```
-
-### 3. Evaluator Functions
-
-Each threshold has an evaluator that extracts the relevant metric:
-
-```go
-// CPU utilization evaluator
-func(report *Report) float64 {
-    for _, r := range report.Categories["cpu"] {
-        if cpu, ok := r.Data.(*CPUData); ok {
-            return 100 - cpu.IdlePct
-        }
-    }
-    return 0
-}
-
-// CLOSE_WAIT evaluator
-func(report *Report) float64 {
-    for _, r := range report.Categories["network"] {
-        if net, ok := r.Data.(*NetworkData); ok && net.TCP != nil {
-            return float64(net.TCP.CloseWaitCount)
-        }
-    }
-    return 0
-}
-```
-
-### 4. DetectAnomalies()
+### 2. DetectAnomalies()
 
 ```go
 func DetectAnomalies(report *Report, thresholds []Threshold) []Anomaly {
-    var anomalies []Anomaly
     for _, t := range thresholds {
-        value := t.Evaluate(report)
+        value, ok := t.Evaluator(report)
+        if !ok { continue }
         if value >= t.Critical {
-            anomalies = append(anomalies, Anomaly{
-                Severity: "critical",
-                Category: t.Category,
-                Message:  fmt.Sprintf("%s at %.1f%s (critical: >%.1f%s)",
-                    t.Name, value, t.Unit, t.Critical, t.Unit),
-                Value:    value,
-            })
+            anomalies = append(anomalies, Anomaly{Severity: "critical", ...})
         } else if value >= t.Warning {
-            anomalies = append(anomalies, Anomaly{
-                Severity: "warning",
-                ...
-            })
+            anomalies = append(anomalies, Anomaly{Severity: "warning", ...})
         }
     }
-    return anomalies
 }
 ```
 
-## The 11 Rules
+## The 24 Rules
 
-| # | Rule | Warning | Critical | Why |
-|---|------|---------|----------|-----|
-| 1 | CPU utilization | > 80% | > 95% | Near capacity |
-| 2 | CPU saturation | > 50% | > 100% | Work queuing (load/CPUs ratio) |
-| 3 | Load per CPU | > 1.5 | > 3.0 | Multiple tasks per core waiting |
-| 4 | Memory utilization | > 85% | > 95% | Based on MemAvailable, not MemFree |
-| 5 | Swap usage | > 20% | > 50% | Swap = memory thrashing |
-| 6 | Memory PSI (some) | > 10% | > 25% | Tasks stalling for memory |
-| 7 | Disk utilization | > 80% | > 95% | I/O channel near saturation |
-| 8 | Disk queue depth | > 8 | > 32 | I/O requests backing up |
-| 9 | TCP retransmissions | > 1% | > 5% | Network packet loss |
-| 10 | CLOSE_WAIT > 0 | > 0 | > 100 | Application connection leak |
-| 11 | Interface errors | > 0 | > 100 | Physical/driver issues |
+### CPU (5 rules)
+
+| # | Metric | Warning | Critical | Why |
+|---|--------|---------|----------|-----|
+| 1 | cpu_utilization | > 80% | > 95% | Near capacity |
+| 2 | cpu_iowait | > 10% | > 30% | Waiting on I/O |
+| 3 | load_average | > 2x CPUs | > 4x CPUs | Multiple tasks per core waiting |
+| 4 | runqlat_p99 | > 10ms | > 50ms | BCC histogram — scheduler delay |
+| 5 | cpu_psi_pressure | > 10% | > 25% | Tasks stalling for CPU |
+
+### Memory (4 rules)
+
+| # | Metric | Warning | Critical | Why |
+|---|--------|---------|----------|-----|
+| 6 | memory_utilization | > 85% | > 95% | Based on MemAvailable, not MemFree |
+| 7 | swap_usage | > 10% | > 50% | Swap = memory thrashing |
+| 8 | memory_psi_pressure | > 10% | > 25% | Tasks stalling for memory |
+| 9 | cache_miss_ratio | > 50% | > 80% | BCC cachestat — poor cache usage |
+
+### Disk (5 rules)
+
+| # | Metric | Warning | Critical | Why |
+|---|--------|---------|----------|-----|
+| 10 | disk_utilization | > 70% | > 90% | I/O channel near saturation |
+| 11 | disk_avg_latency | > 5ms | > 50ms | I/O latency too high |
+| 12 | biolatency_p99_ssd | > 5ms | > 25ms | SSD latency outliers |
+| 13 | biolatency_p99_hdd | > 50ms | > 200ms | HDD latency outliers |
+| 14 | io_psi_pressure | > 10% | > 25% | Tasks stalling for I/O |
+
+### Network (12 rules)
+
+| # | Metric | Warning | Critical | Why |
+|---|--------|---------|----------|-----|
+| 15 | tcp_retransmits | > 10/s | > 50/s | Packet loss or congestion |
+| 16 | tcp_timewait | > 5000 | > 20000 | Port exhaustion risk |
+| 17 | network_errors_per_sec | > 1/s | > 100/s | Physical/driver issues |
+| 18 | conntrack_usage_pct | > 70% | > 90% | Conntrack table approaching capacity |
+| 19 | softnet_dropped | > 1 | > 10 | Kernel can't keep up with NIC rate |
+| 20 | listen_overflows | > 1 | > 100 | Accept queue full — SYN drops |
+| 21 | nic_rx_discards | > 100 | > 10000 | NIC ring buffer overflow |
+| 22 | tcp_close_wait | > 1 | > 100 | Application not closing sockets |
+| 23 | softnet_time_squeeze | > 1 | > 100 | NAPI budget exhausted |
+| 24 | tcp_abort_on_memory | > 1 | > 10 | Connections killed by memory pressure |
+| 25 | irq_imbalance | > 5x ratio | > 20x ratio | One CPU handling all NIC interrupts |
+| 26 | udp_rcvbuf_errors | > 1 | > 100 | UDP receive buffer overflow |
+
+### Container (2 rules)
+
+| # | Metric | Warning | Critical | Why |
+|---|--------|---------|----------|-----|
+| 27 | cpu_throttling | > 100 | > 1000 | Cgroup CPU limit hit |
+| 28 | container_memory_usage | > 80% | > 95% | Container memory limit proximity |
+
+### Other (1 rule)
+
+| # | Metric | Warning | Critical | Why |
+|---|--------|---------|----------|-----|
+| 29 | dns_latency_p99 | > 100ms | > 500ms | BCC gethostlatency — slow DNS |
+
+## Health Score
+
+The health score (0-100) is calculated from detected anomalies with category weights:
+
+- **CPU**: 1.5x weight
+- **Memory**: 1.5x weight
+- **Disk**: 1.0x weight
+- **Network**: 1.0x weight
+- **Container**: 1.0x weight
+
+Critical anomaly = -20 points, Warning = -10 points (scaled by weight).
 
 ---
 

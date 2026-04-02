@@ -250,7 +250,16 @@ type NetworkInterface struct {
 	RxDiscards  int64  `json:"rx_discards,omitempty"`
 	RxBufErrors int64  `json:"rx_buf_errors,omitempty"`
 	RPSEnabled  bool   `json:"rps_enabled,omitempty"`
+	XPSEnabled  bool   `json:"xps_enabled,omitempty"`
 	BondSlave   bool   `json:"bond_slave,omitempty"`
+	MTU         int    `json:"mtu,omitempty"`
+	// Offload features (ethtool -k)
+	TSOEnabled bool `json:"tso_enabled,omitempty"`
+	GROEnabled bool `json:"gro_enabled,omitempty"`
+	GSOEnabled bool `json:"gso_enabled,omitempty"`
+	// Interrupt coalescing (ethtool -c)
+	CoalesceRxUsecs int  `json:"coalesce_rx_usecs,omitempty"`
+	CoalesceAdaptRx bool `json:"coalesce_adaptive_rx,omitempty"`
 }
 
 // ConntrackStats from /proc/sys/net/netfilter/nf_conntrack_*
@@ -275,6 +284,14 @@ type SoftnetStats struct {
 	Processed   int64 `json:"processed"`
 	Dropped     int64 `json:"dropped"`
 	TimeSqueeze int64 `json:"time_squeeze"`
+}
+
+// ListenSocket represents a listening TCP socket with accept queue depth.
+type ListenSocket struct {
+	LocalAddr string `json:"local_addr"`
+	RecvQ     int    `json:"recv_q"`     // current accept queue depth
+	SendQ     int    `json:"send_q"`     // backlog (max queue size)
+	FillPct   float64 `json:"fill_pct"`  // recv_q / send_q * 100
 }
 
 type TCPStats struct {
@@ -318,6 +335,52 @@ type NetworkData struct {
 	TCPAbortOnMemory int64             `json:"tcp_abort_on_memory,omitempty"`
 	TCPOFOQueue      int64             `json:"tcp_ofo_queue,omitempty"`
 	PruneCalled      int64             `json:"prune_called,omitempty"`
+	// Rate fields (computed from two-point delta / interval)
+	SoftnetDropRate    float64 `json:"softnet_drop_rate,omitempty"`
+	SoftnetSqueezeRate float64 `json:"softnet_squeeze_rate,omitempty"`
+	ListenOverflowRate float64 `json:"listen_overflow_rate,omitempty"`
+	TCPAbortMemRate    float64 `json:"tcp_abort_mem_rate,omitempty"`
+	UDPRcvbufErrRate   float64 `json:"udp_rcvbuf_err_rate,omitempty"`
+	// UDP stats from /proc/net/snmp
+	UDPRcvbufErrors int64 `json:"udp_rcvbuf_errors,omitempty"`
+	UDPSndbufErrors int64 `json:"udp_sndbuf_errors,omitempty"`
+	UDPInErrors     int64 `json:"udp_in_errors,omitempty"`
+	// Socket memory from /proc/net/sockstat
+	TCPSocketsInUse int   `json:"tcp_sockets_inuse,omitempty"`
+	TCPOrphans      int   `json:"tcp_orphans,omitempty"`
+	TCPMemPages     int   `json:"tcp_mem_pages,omitempty"`
+	UDPSocketsInUse int   `json:"udp_sockets_inuse,omitempty"`
+	// Additional sysctls
+	RmemMax               int    `json:"rmem_max,omitempty"`
+	WmemMax               int    `json:"wmem_max,omitempty"`
+	NetdevMaxBacklog      int    `json:"netdev_max_backlog,omitempty"`
+	IPLocalPortRange      string `json:"ip_local_port_range,omitempty"`
+	TCPFinTimeout         int    `json:"tcp_fin_timeout,omitempty"`
+	TCPKeepaliveIntvl     int    `json:"tcp_keepalive_intvl,omitempty"`
+	TCPKeepaliveProbes    int    `json:"tcp_keepalive_probes,omitempty"`
+	TCPSlowStartAfterIdle int    `json:"tcp_slow_start_after_idle,omitempty"`
+	TCPFastOpen           int    `json:"tcp_fastopen,omitempty"`
+	TCPSyncookies         int    `json:"tcp_syncookies,omitempty"`
+	TCPNotsentLowat       int    `json:"tcp_notsent_lowat,omitempty"`
+	DefaultQdisc          string `json:"default_qdisc,omitempty"`
+	TCPMtuProbing         int    `json:"tcp_mtu_probing,omitempty"`
+	NetdevBudgetUsecs     int    `json:"netdev_budget_usecs,omitempty"`
+	// TCP recv-side counters from /proc/net/netstat
+	TCPRcvQDrop         int64 `json:"tcp_rcvq_drop,omitempty"`
+	TCPZeroWindowDrop   int64 `json:"tcp_zero_window_drop,omitempty"`
+	TCPToZeroWindowAdv  int64 `json:"tcp_to_zero_window_adv,omitempty"`
+	TCPFromZeroWindowAdv int64 `json:"tcp_from_zero_window_adv,omitempty"`
+	// Rate fields for recv-side counters
+	TCPRcvQDropRate       float64 `json:"tcp_rcvq_drop_rate,omitempty"`
+	TCPZeroWindowDropRate float64 `json:"tcp_zero_window_drop_rate,omitempty"`
+	// Listen queue depths from ss -tnl
+	ListenSockets []ListenSocket `json:"listen_sockets,omitempty"`
+	// ESTABLISHED sockets with high Recv-Q
+	RecvQSaturated int `json:"recvq_saturated_count,omitempty"`
+	// ARP neighbor table thresholds
+	ARPGcThresh1 int `json:"arp_gc_thresh1,omitempty"`
+	ARPGcThresh2 int `json:"arp_gc_thresh2,omitempty"`
+	ARPGcThresh3 int `json:"arp_gc_thresh3,omitempty"`
 }
 
 type ProcessInfo struct {
@@ -397,6 +460,7 @@ type Hotspot struct {
 type Recommendation struct {
 	Priority       int      `json:"priority"`
 	Category       string   `json:"category"`
+	Type           string   `json:"type"`
 	Title          string   `json:"title"`
 	Commands       []string `json:"commands"`
 	Persistent     []string `json:"persistent"`

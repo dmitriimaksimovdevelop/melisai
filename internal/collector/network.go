@@ -17,16 +17,22 @@ import (
 // NetworkCollector gathers network metrics from procfs (Tier 1).
 type NetworkCollector struct {
 	procRoot string
+	sysRoot  string // /sys root for sysfs access (testable)
 	cmdRun   CommandRunner
 }
 
 func NewNetworkCollector(procRoot string) *NetworkCollector {
-	return &NetworkCollector{procRoot: procRoot, cmdRun: &ExecCommandRunner{}}
+	return &NetworkCollector{procRoot: procRoot, sysRoot: "/sys", cmdRun: &ExecCommandRunner{}}
 }
 
 // NewNetworkCollectorWithRunner creates a NetworkCollector with a custom CommandRunner for testing.
 func NewNetworkCollectorWithRunner(procRoot string, runner CommandRunner) *NetworkCollector {
-	return &NetworkCollector{procRoot: procRoot, cmdRun: runner}
+	return &NetworkCollector{procRoot: procRoot, sysRoot: "/sys", cmdRun: runner}
+}
+
+// NewNetworkCollectorFull creates a NetworkCollector with all parameters for testing.
+func NewNetworkCollectorFull(procRoot, sysRoot string, runner CommandRunner) *NetworkCollector {
+	return &NetworkCollector{procRoot: procRoot, sysRoot: sysRoot, cmdRun: runner}
 }
 
 func (c *NetworkCollector) Name() string     { return "network_stats" }
@@ -39,9 +45,14 @@ func (c *NetworkCollector) Collect(ctx context.Context, cfg CollectConfig) (*mod
 	start := time.Now()
 	data := &model.NetworkData{}
 
-	// Two-point sampling for /proc/net/dev and /proc/net/snmp to get rates
+	// Two-point sampling for rates: first sample before interval
 	ifaces1 := c.parseNetDev()
-	snmp1 := c.parseSNMP()
+	snmp1 := &model.NetworkData{}
+	c.parseSNMP(snmp1)
+	irqSample1 := c.readNetRxSoftirqs()
+	softnet1 := c.parseSoftnetStat()
+	netstat1 := &model.NetworkData{}
+	c.parseNetstat(netstat1)
 
 	interval := cfg.SampleInterval
 	if interval == 0 {
@@ -56,12 +67,12 @@ func (c *NetworkCollector) Collect(ctx context.Context, cfg CollectConfig) (*mod
 	// /proc/net/dev — interface statistics (second sample)
 	data.Interfaces = c.parseNetDev()
 
-	// /proc/net/snmp — TCP protocol stats (second sample for rate)
-	data.TCP = c.parseSNMP()
+	// /proc/net/snmp — TCP + UDP protocol stats (second sample for rate)
+	c.parseSNMP(data)
 
 	// Compute retransmit rate from delta
-	if snmp1 != nil && data.TCP != nil {
-		retransDelta := data.TCP.RetransSegs - snmp1.RetransSegs
+	if snmp1.TCP != nil && data.TCP != nil {
+		retransDelta := data.TCP.RetransSegs - snmp1.TCP.RetransSegs
 		if retransDelta < 0 {
 			retransDelta = 0 // counter wrapped
 		}
@@ -94,11 +105,28 @@ func (c *NetworkCollector) Collect(ctx context.Context, cfg CollectConfig) (*mod
 	data.TCPMaxSynBacklog = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_max_syn_backlog")
 	data.TCPTWReuse = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_tw_reuse")
 
-	// Deep network diagnostics
+	// Deep network diagnostics — sysctls
 	data.TCPMem = readSysctlString(c.procRoot, "sys/net/ipv4/tcp_mem")
 	data.TCPMaxTwBuckets = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_max_tw_buckets")
 	data.TCPKeepaliveTime = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_keepalive_time")
+	data.TCPKeepaliveIntvl = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_keepalive_intvl")
+	data.TCPKeepaliveProbes = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_keepalive_probes")
 	data.NetdevBudget = readSysctlInt(c.procRoot, "sys/net/core/netdev_budget")
+	data.NetdevBudgetUsecs = readSysctlInt(c.procRoot, "sys/net/core/netdev_budget_usecs")
+	data.NetdevMaxBacklog = readSysctlInt(c.procRoot, "sys/net/core/netdev_max_backlog")
+	data.RmemMax = readSysctlInt(c.procRoot, "sys/net/core/rmem_max")
+	data.WmemMax = readSysctlInt(c.procRoot, "sys/net/core/wmem_max")
+	data.IPLocalPortRange = readSysctlString(c.procRoot, "sys/net/ipv4/ip_local_port_range")
+	data.TCPFinTimeout = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_fin_timeout")
+	data.TCPSlowStartAfterIdle = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_slow_start_after_idle")
+	data.TCPFastOpen = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_fastopen")
+	data.TCPSyncookies = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_syncookies")
+	data.TCPNotsentLowat = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_notsent_lowat")
+	data.DefaultQdisc = readSysctlString(c.procRoot, "sys/net/core/default_qdisc")
+	data.TCPMtuProbing = readSysctlInt(c.procRoot, "sys/net/ipv4/tcp_mtu_probing")
+	data.ARPGcThresh1 = readSysctlInt(c.procRoot, "sys/net/ipv4/neigh/default/gc_thresh1")
+	data.ARPGcThresh2 = readSysctlInt(c.procRoot, "sys/net/ipv4/neigh/default/gc_thresh2")
+	data.ARPGcThresh3 = readSysctlInt(c.procRoot, "sys/net/ipv4/neigh/default/gc_thresh3")
 
 	// Conntrack table stats
 	data.Conntrack = c.parseConntrack()
@@ -106,11 +134,66 @@ func (c *NetworkCollector) Collect(ctx context.Context, cfg CollectConfig) (*mod
 	// Softnet stats (per-CPU packet processing)
 	data.SoftnetStats = c.parseSoftnetStat()
 
-	// IRQ distribution (two-point delta — uses first/second sample interval)
-	data.IRQDistribution = c.parseIRQDistribution(ctx, interval)
+	// IRQ distribution (two-point delta — reuse pre/post interval samples)
+	data.IRQDistribution = c.computeIRQDistribution(irqSample1)
 
 	// Extended TCP stats from /proc/net/netstat
 	c.parseNetstat(data)
+
+	// Compute rate fields from two-point deltas
+	secs := interval.Seconds()
+	if secs > 0 {
+		// Softnet drop/squeeze rates
+		if softnet1 != nil && len(data.SoftnetStats) == len(softnet1) {
+			var dropDelta, squeezeDelta int64
+			for i := range softnet1 {
+				dd := data.SoftnetStats[i].Dropped - softnet1[i].Dropped
+				sd := data.SoftnetStats[i].TimeSqueeze - softnet1[i].TimeSqueeze
+				if dd > 0 {
+					dropDelta += dd
+				}
+				if sd > 0 {
+					squeezeDelta += sd
+				}
+			}
+			data.SoftnetDropRate = float64(dropDelta) / secs
+			data.SoftnetSqueezeRate = float64(squeezeDelta) / secs
+		}
+		// TCP extended counter rates
+		if netstat1.ListenOverflows > 0 || data.ListenOverflows > 0 {
+			d := data.ListenOverflows - netstat1.ListenOverflows
+			if d > 0 {
+				data.ListenOverflowRate = float64(d) / secs
+			}
+		}
+		if netstat1.TCPAbortOnMemory > 0 || data.TCPAbortOnMemory > 0 {
+			d := data.TCPAbortOnMemory - netstat1.TCPAbortOnMemory
+			if d > 0 {
+				data.TCPAbortMemRate = float64(d) / secs
+			}
+		}
+		// UDP rcvbuf error rate
+		if snmp1.UDPRcvbufErrors > 0 || data.UDPRcvbufErrors > 0 {
+			d := data.UDPRcvbufErrors - snmp1.UDPRcvbufErrors
+			if d > 0 {
+				data.UDPRcvbufErrRate = float64(d) / secs
+			}
+		}
+		// TCPRcvQDrop rate (app not reading from ESTAB sockets)
+		if data.TCPRcvQDrop > netstat1.TCPRcvQDrop {
+			data.TCPRcvQDropRate = float64(data.TCPRcvQDrop-netstat1.TCPRcvQDrop) / secs
+		}
+		// TCPZeroWindowDrop rate
+		if data.TCPZeroWindowDrop > netstat1.TCPZeroWindowDrop {
+			data.TCPZeroWindowDropRate = float64(data.TCPZeroWindowDrop-netstat1.TCPZeroWindowDrop) / secs
+		}
+	}
+
+	// Listen queue depths + ESTABLISHED Recv-Q saturation
+	c.parseListenQueues(ctx, data)
+
+	// Socket memory and orphan info from /proc/net/sockstat
+	c.parseSockstat(data)
 
 	// NIC hardware details (driver, queues, ring buffer, RPS, bond)
 	c.enrichNICDetails(ctx, data)
@@ -177,29 +260,29 @@ func (c *NetworkCollector) parseNetDev() []model.NetworkInterface {
 	return ifaces
 }
 
-func (c *NetworkCollector) parseSNMP() *model.TCPStats {
+// parseSNMP reads both TCP and UDP stats from /proc/net/snmp in a single pass.
+func (c *NetworkCollector) parseSNMP(data *model.NetworkData) {
 	f, err := os.Open(filepath.Join(c.procRoot, "net", "snmp"))
 	if err != nil {
-		return nil
+		return
 	}
 	defer f.Close()
 
 	tcp := &model.TCPStats{}
 	scanner := bufio.NewScanner(f)
 
-	var tcpHeaders []string
+	var tcpHeaders, udpHeaders []string
 	for scanner.Scan() {
 		line := scanner.Text()
 		fields := strings.Fields(line)
 		if len(fields) < 2 {
 			continue
 		}
-		if fields[0] == "Tcp:" {
+		switch fields[0] {
+		case "Tcp:":
 			if tcpHeaders == nil {
-				// First occurrence is the header
 				tcpHeaders = fields[1:]
 			} else {
-				// Second occurrence is the values
 				vals := fields[1:]
 				for i, header := range tcpHeaders {
 					if i >= len(vals) {
@@ -222,9 +305,29 @@ func (c *NetworkCollector) parseSNMP() *model.TCPStats {
 					}
 				}
 			}
+		case "Udp:":
+			if udpHeaders == nil {
+				udpHeaders = fields[1:]
+			} else {
+				vals := fields[1:]
+				for i, header := range udpHeaders {
+					if i >= len(vals) {
+						break
+					}
+					v, _ := strconv.ParseInt(vals[i], 10, 64)
+					switch header {
+					case "RcvbufErrors":
+						data.UDPRcvbufErrors = v
+					case "SndbufErrors":
+						data.UDPSndbufErrors = v
+					case "InErrors":
+						data.UDPInErrors = v
+					}
+				}
+			}
 		}
 	}
-	return tcp
+	data.TCP = tcp
 }
 
 func (c *NetworkCollector) parseSSConnections(ctx context.Context, data *model.NetworkData) {
@@ -267,9 +370,12 @@ func (c *NetworkCollector) parseConntrack() *model.ConntrackStats {
 		return nil // conntrack not loaded
 	}
 	return &model.ConntrackStats{
-		Count:    count,
-		Max:      max,
-		UsagePct: float64(count) / float64(max) * 100,
+		Count:        count,
+		Max:          max,
+		UsagePct:     float64(count) / float64(max) * 100,
+		Drops:        readSysctlInt64(c.procRoot, "sys/net/netfilter/nf_conntrack_drop"),
+		InsertFailed: readSysctlInt64(c.procRoot, "sys/net/netfilter/nf_conntrack_insert_failed"),
+		EarlyDrop:    readSysctlInt64(c.procRoot, "sys/net/netfilter/nf_conntrack_early_drop"),
 	}
 }
 
@@ -304,15 +410,10 @@ func (c *NetworkCollector) parseSoftnetStat() []model.SoftnetStats {
 	return stats
 }
 
-// parseIRQDistribution samples /proc/softirqs NET_RX line twice to compute per-CPU delta.
-func (c *NetworkCollector) parseIRQDistribution(ctx context.Context, interval time.Duration) []model.IRQDistribution {
-	sample1 := c.readNetRxSoftirqs()
+// computeIRQDistribution computes per-CPU NET_RX softirq delta from pre/post interval samples.
+// The first sample is taken before the interval sleep in Collect(), the second after.
+func (c *NetworkCollector) computeIRQDistribution(sample1 []int64) []model.IRQDistribution {
 	if sample1 == nil {
-		return nil
-	}
-	select {
-	case <-time.After(interval):
-	case <-ctx.Done():
 		return nil
 	}
 	sample2 := c.readNetRxSoftirqs()
@@ -402,6 +503,14 @@ func (c *NetworkCollector) parseNetstat(data *model.NetworkData) {
 						data.TCPOFOQueue = v
 					case "PruneCalled":
 						data.PruneCalled = v
+					case "TCPRcvQDrop":
+						data.TCPRcvQDrop = v
+					case "TCPZeroWindowDrop":
+						data.TCPZeroWindowDrop = v
+					case "TCPToZeroWindowAdv":
+						data.TCPToZeroWindowAdv = v
+					case "TCPFromZeroWindowAdv":
+						data.TCPFromZeroWindowAdv = v
 					}
 				}
 				break
@@ -419,14 +528,29 @@ func (c *NetworkCollector) enrichNICDetails(ctx context.Context, data *model.Net
 			continue
 		}
 
+		sysNetDir := filepath.Join(c.sysRoot, "class", "net", name)
+
+		// Speed from sysfs (e.g., "1000" for 1Gbps)
+		if speedBytes, err := os.ReadFile(filepath.Join(sysNetDir, "speed")); err == nil {
+			trimmed := strings.TrimSpace(string(speedBytes))
+			if trimmed != "" && trimmed != "-1" {
+				iface.Speed = trimmed + "Mbps"
+			}
+		}
+
+		// MTU from sysfs
+		if mtuBytes, err := os.ReadFile(filepath.Join(sysNetDir, "mtu")); err == nil {
+			iface.MTU, _ = strconv.Atoi(strings.TrimSpace(string(mtuBytes)))
+		}
+
 		// Queue count from sysfs
-		rxQueues := countDirs(filepath.Join("/sys/class/net", name, "queues"), "rx-")
-		txQueues := countDirs(filepath.Join("/sys/class/net", name, "queues"), "tx-")
+		rxQueues := countDirs(filepath.Join(sysNetDir, "queues"), "rx-")
+		txQueues := countDirs(filepath.Join(sysNetDir, "queues"), "tx-")
 		iface.RxQueues = rxQueues
 		iface.TxQueues = txQueues
 
 		// RPS status
-		rpsFile := filepath.Join("/sys/class/net", name, "queues", "rx-0", "rps_cpus")
+		rpsFile := filepath.Join(sysNetDir, "queues", "rx-0", "rps_cpus")
 		if rpsCPUs, err := os.ReadFile(rpsFile); err == nil {
 			trimmed := strings.TrimSpace(string(rpsCPUs))
 			trimmed = strings.ReplaceAll(trimmed, ",", "")
@@ -435,7 +559,7 @@ func (c *NetworkCollector) enrichNICDetails(ctx context.Context, data *model.Net
 		}
 
 		// Bond slave detection
-		masterPath := filepath.Join("/sys/class/net", name, "master")
+		masterPath := filepath.Join(sysNetDir, "master")
 		if info, err := os.Stat(masterPath); err == nil && info.IsDir() {
 			iface.BondSlave = true
 		}
@@ -452,6 +576,47 @@ func (c *NetworkCollector) enrichNICDetails(ctx context.Context, data *model.Net
 		// ethtool -g (ring buffer)
 		if out, err := c.cmdRun.Run(ctx, "ethtool", "-g", name); err == nil {
 			c.parseRingBuffer(string(out), iface)
+		}
+
+		// XPS status (tx queue 0)
+		xpsFile := filepath.Join(sysNetDir, "queues", "tx-0", "xps_cpus")
+		if xpsCPUs, err := os.ReadFile(xpsFile); err == nil {
+			trimmed := strings.TrimSpace(string(xpsCPUs))
+			trimmed = strings.ReplaceAll(trimmed, ",", "")
+			trimmed = strings.TrimLeft(trimmed, "0")
+			iface.XPSEnabled = trimmed != "" && trimmed != "0"
+		}
+
+		// ethtool -k (offload features)
+		if out, err := c.cmdRun.Run(ctx, "ethtool", "-k", name); err == nil {
+			for _, line := range strings.Split(string(out), "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "tcp-segmentation-offload:") {
+					iface.TSOEnabled = strings.Contains(line, " on")
+				}
+				if strings.HasPrefix(line, "generic-receive-offload:") {
+					iface.GROEnabled = strings.Contains(line, " on")
+				}
+				if strings.HasPrefix(line, "generic-segmentation-offload:") {
+					iface.GSOEnabled = strings.Contains(line, " on")
+				}
+			}
+		}
+
+		// ethtool -c (interrupt coalescing)
+		if out, err := c.cmdRun.Run(ctx, "ethtool", "-c", name); err == nil {
+			for _, line := range strings.Split(string(out), "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "rx-usecs:") {
+					parts := strings.Fields(line)
+					if len(parts) >= 2 {
+						iface.CoalesceRxUsecs, _ = strconv.Atoi(parts[1])
+					}
+				}
+				if strings.HasPrefix(line, "Adaptive RX:") {
+					iface.CoalesceAdaptRx = strings.Contains(line, " on")
+				}
+			}
 		}
 
 		// ethtool -S (NIC-specific stats: rx_discards, rx_buf_errors)
@@ -500,6 +665,91 @@ func (c *NetworkCollector) parseRingBuffer(output string, iface *model.NetworkIn
 				iface.RingRxMax = val
 			} else if inCurrent {
 				iface.RingRxCur = val
+			}
+		}
+	}
+}
+
+// parseListenQueues collects accept queue depths and ESTABLISHED recv-Q saturation.
+func (c *NetworkCollector) parseListenQueues(ctx context.Context, data *model.NetworkData) {
+	// ss -tnl: LISTEN sockets with Recv-Q (current queue) and Send-Q (backlog)
+	out, err := c.cmdRun.Run(ctx, "ss", "-tnl")
+	if err == nil {
+		for _, line := range strings.Split(string(out), "\n") {
+			fields := strings.Fields(line)
+			// State Recv-Q Send-Q Local-Address:Port Peer-Address:Port
+			if len(fields) < 5 || fields[0] != "LISTEN" {
+				continue
+			}
+			recvQ, _ := strconv.Atoi(fields[1])
+			sendQ, _ := strconv.Atoi(fields[2])
+			if sendQ > 0 {
+				fillPct := float64(recvQ) / float64(sendQ) * 100
+				if fillPct >= 50 { // only report sockets with >= 50% fill
+					data.ListenSockets = append(data.ListenSockets, model.ListenSocket{
+						LocalAddr: fields[3],
+						RecvQ:     recvQ,
+						SendQ:     sendQ,
+						FillPct:   fillPct,
+					})
+				}
+			}
+		}
+	}
+
+	// ss -tn state established: count sockets with non-zero Recv-Q
+	// Non-zero Recv-Q on ESTABLISHED = app not reading fast enough
+	out2, err := c.cmdRun.Run(ctx, "ss", "-tn", "state", "established")
+	if err == nil {
+		for _, line := range strings.Split(string(out2), "\n") {
+			fields := strings.Fields(line)
+			// Recv-Q Send-Q Local-Address:Port Peer-Address:Port
+			if len(fields) < 4 {
+				continue
+			}
+			recvQ, _ := strconv.Atoi(fields[0])
+			if recvQ > 65536 { // > 64KB queued = significant backpressure
+				data.RecvQSaturated++
+			}
+		}
+	}
+}
+
+// parseSockstat reads /proc/net/sockstat for socket memory and orphan counts.
+func (c *NetworkCollector) parseSockstat(data *model.NetworkData) {
+	f, err := os.Open(filepath.Join(c.procRoot, "net", "sockstat"))
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		// Format: "TCP: inuse 123 orphan 4 tw 567 alloc 890 mem 12"
+		if fields[0] == "TCP:" {
+			for i := 1; i+1 < len(fields); i += 2 {
+				v, _ := strconv.Atoi(fields[i+1])
+				switch fields[i] {
+				case "inuse":
+					data.TCPSocketsInUse = v
+				case "orphan":
+					data.TCPOrphans = v
+				case "mem":
+					data.TCPMemPages = v
+				}
+			}
+		}
+		if fields[0] == "UDP:" {
+			for i := 1; i+1 < len(fields); i += 2 {
+				v, _ := strconv.Atoi(fields[i+1])
+				if fields[i] == "inuse" {
+					data.UDPSocketsInUse = v
+				}
 			}
 		}
 	}
