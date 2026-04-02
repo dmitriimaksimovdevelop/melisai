@@ -368,6 +368,96 @@ func DefaultThresholds() []Threshold {
 				return fmt.Sprintf("Network errors: %.1f/sec", v)
 			},
 		},
+		// Conntrack table usage
+		{
+			Metric: "conntrack_usage_pct", Category: "network",
+			Warning: 70, Critical: 90,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["network"]; ok {
+					for _, res := range results {
+						if net, ok := res.Data.(*NetworkData); ok {
+							if net.Conntrack != nil && net.Conntrack.Max > 0 {
+								return net.Conntrack.UsagePct, true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("Conntrack table usage: %.1f%%", v)
+			},
+		},
+		// Softnet drops (packets dropped by kernel network stack)
+		{
+			Metric: "softnet_dropped", Category: "network",
+			Warning: 1, Critical: 10,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["network"]; ok {
+					for _, res := range results {
+						if net, ok := res.Data.(*NetworkData); ok {
+							var totalDropped int64
+							for _, s := range net.SoftnetStats {
+								totalDropped += s.Dropped
+							}
+							if totalDropped > 0 {
+								return float64(totalDropped), true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("Softnet packets dropped: %.0f (kernel can't keep up with NIC)", v)
+			},
+		},
+		// Listen overflows (accept queue full)
+		{
+			Metric: "listen_overflows", Category: "network",
+			Warning: 1, Critical: 100,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["network"]; ok {
+					for _, res := range results {
+						if net, ok := res.Data.(*NetworkData); ok {
+							if net.ListenOverflows > 0 {
+								return float64(net.ListenOverflows), true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("Listen queue overflows: %.0f (nginx backlog too small or missing reuseport)", v)
+			},
+		},
+		// NIC RX discards (ring buffer overflow)
+		{
+			Metric: "nic_rx_discards", Category: "network",
+			Warning: 100, Critical: 10000,
+			Evaluator: func(r *Report) (float64, bool) {
+				if results, ok := r.Categories["network"]; ok {
+					for _, res := range results {
+						if net, ok := res.Data.(*NetworkData); ok {
+							var maxDiscards int64
+							for _, iface := range net.Interfaces {
+								if iface.RxDiscards > maxDiscards {
+									maxDiscards = iface.RxDiscards
+								}
+							}
+							if maxDiscards > 0 {
+								return float64(maxDiscards), true
+							}
+						}
+					}
+				}
+				return 0, false
+			},
+			Message: func(v float64) string {
+				return fmt.Sprintf("NIC RX discards: %.0f (ring buffer overflow — increase with ethtool -G)", v)
+			},
+		},
 	}
 }
 

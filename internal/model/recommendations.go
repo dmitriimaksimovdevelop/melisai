@@ -220,6 +220,78 @@ func GenerateRecommendations(report *Report) []Recommendation {
 					})
 					priority++
 				}
+
+				// Conntrack table pressure
+				if net.Conntrack != nil && net.Conntrack.UsagePct > 70 {
+					recs = append(recs, Recommendation{
+						Priority: priority,
+						Category: "network",
+						Title:    "Conntrack table approaching capacity",
+						Commands: []string{
+							fmt.Sprintf("sysctl -w net.netfilter.nf_conntrack_max=%d", net.Conntrack.Max*2),
+						},
+						Persistent: []string{
+							fmt.Sprintf("echo 'net.netfilter.nf_conntrack_max=%d' >> /etc/sysctl.d/99-melisai.conf", net.Conntrack.Max*2),
+						},
+						ExpectedImpact: "Prevent conntrack table full drops",
+						Evidence:       formatEvidence("conntrack count=%d, max=%d, usage=%.1f%%", net.Conntrack.Count, net.Conntrack.Max, net.Conntrack.UsagePct),
+						Source:         "Linux conntrack documentation",
+					})
+					priority++
+				}
+
+				// Ring buffer too small
+				for _, iface := range net.Interfaces {
+					if iface.RingRxCur > 0 && iface.RingRxMax > 0 && iface.RingRxCur < iface.RingRxMax/2 && iface.RxDiscards > 0 {
+						recs = append(recs, Recommendation{
+							Priority: priority,
+							Category: "network",
+							Title:    fmt.Sprintf("Increase ring buffer on %s (rx_discards detected)", iface.Name),
+							Commands: []string{
+								fmt.Sprintf("ethtool -G %s rx %d", iface.Name, iface.RingRxMax),
+							},
+							ExpectedImpact: "Reduce NIC-level packet drops during traffic bursts",
+							Evidence:       formatEvidence("%s: ring_rx=%d/%d, rx_discards=%d, driver=%s", iface.Name, iface.RingRxCur, iface.RingRxMax, iface.RxDiscards, iface.Driver),
+							Source:         "Brendan Gregg, Systems Performance ch.10",
+						})
+						priority++
+					}
+				}
+
+				// Listen overflows
+				if net.ListenOverflows > 0 {
+					recs = append(recs, Recommendation{
+						Priority: priority,
+						Category: "network",
+						Title:    "Listen queue overflows detected — add reuseport to nginx",
+						Commands: []string{
+							"# In nginx.conf: listen 80 reuseport; listen 443 ssl reuseport;",
+						},
+						ExpectedImpact: "Eliminate SYN drops under burst load (each worker gets own accept queue)",
+						Evidence:       formatEvidence("ListenOverflows=%d, ListenDrops=%d", net.ListenOverflows, net.ListenDrops),
+						Source:         "Linux networking, SO_REUSEPORT documentation",
+					})
+					priority++
+				}
+
+				// PruneCalled — TCP memory pressure
+				if net.PruneCalled > 0 {
+					recs = append(recs, Recommendation{
+						Priority: priority,
+						Category: "network",
+						Title:    "TCP memory pressure detected (PruneCalled) — increase tcp_mem",
+						Commands: []string{
+							"sysctl -w 'net.ipv4.tcp_mem=1048576 2097152 4194304'",
+						},
+						Persistent: []string{
+							"echo 'net.ipv4.tcp_mem=1048576 2097152 4194304' >> /etc/sysctl.d/99-melisai.conf",
+						},
+						ExpectedImpact: "Prevent kernel from pruning TCP receive buffers under high connection count",
+						Evidence:       formatEvidence("PruneCalled=%d, tcp_mem=%s", net.PruneCalled, net.TCPMem),
+						Source:         "Linux TCP memory management, Brendan Gregg Systems Performance ch.10",
+					})
+					priority++
+				}
 			}
 		}
 	}

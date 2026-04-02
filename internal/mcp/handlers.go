@@ -486,6 +486,50 @@ Network interface is reporting errors (CRC, frame, carrier errors).
 - Try replacing cable or switching ports.
 - Check dmesg for NIC error messages.`,
 
+	"conntrack_usage_pct": `**Conntrack Table Pressure**
+The connection tracking table (nf_conntrack) is approaching capacity.
+**Root Causes:**
+- Too many concurrent connections for the configured conntrack_max
+- Aggressive conntrack timeouts not configured (established default is 5 days)
+- DDoS or SYN flood filling the table
+**Recommendations:**
+- Increase nf_conntrack_max: sysctl -w net.netfilter.nf_conntrack_max=<current*2>
+- Reduce conntrack timeouts for faster cleanup
+- Consider NOTRACK for traffic that doesn't need stateful tracking`,
+
+	"softnet_dropped": `**Softnet Packet Drops**
+The kernel is dropping packets because softirq processing can't keep up with NIC ingress rate.
+**Root Causes:**
+- NIC PPS exceeds single CPU processing capacity without RPS
+- netdev_budget too low for traffic volume
+- IRQ affinity misconfigured (all interrupts on one CPU)
+**Recommendations:**
+- Enable RPS to distribute packet processing across CPUs
+- Increase net.core.netdev_budget (default 300, recommend 4096)
+- Pin IRQ affinity 1:1 (queue N → CPU N)`,
+
+	"listen_overflows": `**Listen Queue Overflows**
+The TCP accept queue is full — new SYN packets are being dropped.
+**Root Causes:**
+- nginx/application listen backlog too small (default 511)
+- Application not calling accept() fast enough
+- Missing SO_REUSEPORT (single accept queue for all workers)
+**Recommendations:**
+- Add 'reuseport' to nginx listen directive: listen 80 reuseport;
+- Increase backlog: listen 80 reuseport backlog=8192;
+- Ensure net.core.somaxconn >= backlog value`,
+
+	"nic_rx_discards": `**NIC Ring Buffer Overflow (rx_discards)**
+The NIC is dropping packets at hardware level because the receive ring buffer is full.
+**Root Causes:**
+- Ring buffer too small for traffic burst rate
+- CPU not processing packets fast enough (softirq bottleneck)
+- No RPS/RSS distributing packets across CPUs
+**Recommendations:**
+- Increase ring buffer: ethtool -G <iface> rx <max>
+- Increase netdev_budget for faster softirq processing
+- Enable RPS or pin IRQ affinity for even distribution`,
+
 	"biolatency_p99_ssd": `**High SSD I/O Latency (p99)**
 Block I/O p99 latency for SSDs exceeds expected range.
 **Root Causes:**

@@ -240,6 +240,41 @@ type NetworkInterface struct {
 	RxDropped    int64   `json:"rx_dropped"`
 	TxDropped    int64   `json:"tx_dropped"`
 	ErrorsPerSec float64 `json:"errors_per_sec,omitempty"`
+	// NIC hardware details (Tier 1 — sysfs/ethtool)
+	Driver      string `json:"driver,omitempty"`
+	Speed       string `json:"speed,omitempty"`
+	RxQueues    int    `json:"rx_queues,omitempty"`
+	TxQueues    int    `json:"tx_queues,omitempty"`
+	RingRxCur   int    `json:"ring_rx_current,omitempty"`
+	RingRxMax   int    `json:"ring_rx_max,omitempty"`
+	RxDiscards  int64  `json:"rx_discards,omitempty"`
+	RxBufErrors int64  `json:"rx_buf_errors,omitempty"`
+	RPSEnabled  bool   `json:"rps_enabled,omitempty"`
+	BondSlave   bool   `json:"bond_slave,omitempty"`
+}
+
+// ConntrackStats from /proc/sys/net/netfilter/nf_conntrack_*
+type ConntrackStats struct {
+	Count        int64   `json:"count"`
+	Max          int64   `json:"max"`
+	UsagePct     float64 `json:"usage_pct"`
+	Drops        int64   `json:"drops,omitempty"`
+	InsertFailed int64   `json:"insert_failed,omitempty"`
+	EarlyDrop    int64   `json:"early_drop,omitempty"`
+}
+
+// IRQDistribution tracks per-CPU NET_RX softirq processing (delta over sample interval)
+type IRQDistribution struct {
+	CPU        int   `json:"cpu"`
+	NetRxDelta int64 `json:"net_rx_delta"`
+}
+
+// SoftnetStats from /proc/net/softnet_stat — per-CPU network processing counters
+type SoftnetStats struct {
+	CPU         int   `json:"cpu"`
+	Processed   int64 `json:"processed"`
+	Dropped     int64 `json:"dropped"`
+	TimeSqueeze int64 `json:"time_squeeze"`
 }
 
 type TCPStats struct {
@@ -270,6 +305,19 @@ type NetworkData struct {
 	RatePerMin       float64            `json:"rate_per_min,omitempty"`
 	UniqueConns      int                `json:"unique_connections,omitempty"`
 	TotalLookups     int                `json:"total_lookups,omitempty"`
+	// Deep network diagnostics (Tier 1)
+	Conntrack        *ConntrackStats   `json:"conntrack,omitempty"`
+	IRQDistribution  []IRQDistribution `json:"irq_distribution,omitempty"`
+	SoftnetStats     []SoftnetStats    `json:"softnet_stats,omitempty"`
+	TCPMem           string            `json:"tcp_mem,omitempty"`
+	TCPMaxTwBuckets  int               `json:"tcp_max_tw_buckets,omitempty"`
+	TCPKeepaliveTime int               `json:"tcp_keepalive_time,omitempty"`
+	NetdevBudget     int               `json:"netdev_budget,omitempty"`
+	ListenOverflows  int64             `json:"listen_overflows,omitempty"`
+	ListenDrops      int64             `json:"listen_drops,omitempty"`
+	TCPAbortOnMemory int64             `json:"tcp_abort_on_memory,omitempty"`
+	TCPOFOQueue      int64             `json:"tcp_ofo_queue,omitempty"`
+	PruneCalled      int64             `json:"prune_called,omitempty"`
 }
 
 type ProcessInfo struct {
