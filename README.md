@@ -1,5 +1,6 @@
 # melisai
 
+![melisai terminal demo](doc/images/melisai_quick_profile.gif)
 **Linux performance diagnostics for AI agents.** Single Go binary. Collects 67 BCC/eBPF tools + procfs metrics. Outputs structured JSON with health score, anomalies, and recommendations. Ships with an MCP server for interactive use from Claude Desktop, Cursor, or any MCP-compatible client.
 
 [![Go 1.23+](https://img.shields.io/badge/Go-1.23%2B-00ADD8?logo=go)](https://go.dev)
