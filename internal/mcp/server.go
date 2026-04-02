@@ -15,6 +15,9 @@ type Server struct {
 
 // NewServer creates a new MCP server with registered tools.
 func NewServer(version string) *Server {
+	// Set package-level version for handlers
+	mcpVersion = version
+
 	// Create MCP server
 	s := server.NewMCPServer("melisai", version, server.WithLogging())
 

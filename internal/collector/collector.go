@@ -79,6 +79,9 @@ type CollectConfig struct {
 	// Verbose enables debug-level logging.
 	Verbose bool
 
+	// Version is the application version (set via ldflags by goreleaser).
+	Version string
+
 	// ProcRoot is the path to procfs mount (default "/proc").
 	// Can be overridden for testing.
 	ProcRoot string

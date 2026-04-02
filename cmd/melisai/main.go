@@ -106,6 +106,7 @@ Examples:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := collector.DefaultConfig()
 			cfg.Profile = collectProfile
+			cfg.Version = version
 			cfg.Quiet = collectQuiet
 			cfg.Verbose = collectVerbose
 
