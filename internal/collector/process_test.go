@@ -133,10 +133,13 @@ func TestProcessTopByCPU_SortRegression(t *testing.T) {
 	// The collector sleeps for SampleInterval between the two reads. We set the
 	// interval to 5ms and rewrite after 1ms to be sure the overwrite lands
 	// between the two reads.
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		time.Sleep(1 * time.Millisecond)
 		buildFakeProcfsPass(t, root, 2)
 	}()
+	t.Cleanup(func() { <-done }) // wait for goroutine before TempDir cleanup
 
 	c := NewProcessCollector(root)
 	cfg := CollectConfig{
