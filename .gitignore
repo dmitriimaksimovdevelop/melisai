@@ -1,6 +1,8 @@
 # Binaries
 bin/
+melisai
 *.exe
+*.test
 
 # Test coverage
 coverage.out
@@ -8,6 +10,7 @@ coverage.out
 
 # Build artifacts
 dist/
+demo.tape
 
 # IDE
 .idea/
@@ -23,13 +26,20 @@ Thumbs.db
 # Go
 vendor/
 
-# Context docs (internal)
+# Context docs (internal, force-added selectively)
 context/
 
-# Gemini agent artifacts
+# AI tools
 .gemini/
-/melisai
 .claude/
-collector.test
-*.test
+
+# Release automation artifacts
 docs/RELEASE_WORKFLOW.md
+TEST_RELEASE.md
+
+# Ad-hoc test scripts (not part of go test suite)
+scripts/test_mcp_*.sh
+scripts/test_null_fix.sh
+
+# Articles (local drafts)
+articles/
