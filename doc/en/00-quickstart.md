@@ -118,4 +118,4 @@ melisai capabilities  Show available tools and kernel features
 
 ---
 
-*Next: [Introduction — How melisai Works](00-introduction.md)*
+*Next: [Introduction — How melisai Works](index.md)*

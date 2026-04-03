@@ -245,7 +245,7 @@ cat /sys/bus/pci/devices/0000:41:00.0/numa_node   # => 1
 numactl --cpunodebind=1 --membind=1 python train.py
 ```
 
-Cross-NUMA GPU access penalizes `cudaMemcpy`, PCIe peer-to-peer transfers, and CPU-side preprocessing. See [Chapter 18 -- GPU Monitoring](18-gpu-monitoring.md) for GPU metric collection.
+Cross-NUMA GPU access penalizes `cudaMemcpy`, PCIe peer-to-peer transfers, and CPU-side preprocessing. See [Chapter 18 -- GPU & PCIe Topology](18-gpu-pcie-analysis.md) for GPU metric collection.
 
 ## Key Takeaways
 
