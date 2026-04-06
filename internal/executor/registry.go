@@ -115,7 +115,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "tcpconnlat", Binary: "tcpconnlat", Category: "network",
 		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) { return ParseTcpconnlat(raw, 1000) },
 	},
@@ -123,7 +123,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "tcpretrans", Binary: "tcpretrans", Category: "network",
 		NeedsRoot: true, OutputType: TABULAR,
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) { return ParseTcpretrans(raw, 1000) },
 	},
@@ -139,7 +139,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "gethostlatency", Binary: "gethostlatency", Category: "network",
 		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) { return ParseGethostlatency(raw, 1000) },
 	},
@@ -147,7 +147,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "tcpdrop", Binary: "tcpdrop", Category: "network",
 		NeedsRoot: true, OutputType: TRACING,
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) { return ParseTcpdrop(raw, 1000) },
 	},
@@ -155,7 +155,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "tcpstates", Binary: "tcpstates", Category: "network",
 		NeedsRoot: true, OutputType: TABULAR,
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) {
 			// tcpstates output is complex, treat as tabular for now
@@ -234,7 +234,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "killsnoop", Binary: "killsnoop", Category: "process",
 		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) {
 			events, trunc := ParseTabularEvents(raw, 1000)
@@ -245,7 +245,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "threadsnoop", Binary: "threadsnoop", Category: "process",
 		NeedsRoot: true, OutputType: TABULAR,
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) {
 			events, trunc := ParseTabularEvents(raw, 1000)
@@ -256,7 +256,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "syncsnoop", Binary: "syncsnoop", Category: "process",
 		NeedsRoot: true, OutputType: TABULAR,
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) {
 			events, trunc := ParseTabularEvents(raw, 1000)
@@ -267,7 +267,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "exitsnoop", Binary: "exitsnoop", Category: "process",
 		NeedsRoot: true, OutputType: TABULAR,
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) {
 			events, trunc := ParseTabularEvents(raw, 1000)
@@ -289,7 +289,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "capable", Binary: "capable", Category: "process",
 		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) {
 			events, trunc := ParseTabularEvents(raw, 1000)
@@ -302,7 +302,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "filelife", Binary: "filelife", Category: "disk",
 		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) {
 			events, trunc := ParseTabularEvents(raw, 1000)
@@ -313,7 +313,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "mountsnoop", Binary: "mountsnoop", Category: "disk",
 		NeedsRoot: true, OutputType: TABULAR,
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) {
 			events, trunc := ParseTabularEvents(raw, 1000)
@@ -370,7 +370,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "mdflush", Binary: "mdflush", Category: "disk",
 		NeedsRoot: true, OutputType: TABULAR,
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) {
 			events, trunc := ParseTabularEvents(raw, 1000)
@@ -394,7 +394,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "cpufreq", Binary: "cpufreq", Category: "cpu",
 		NeedsRoot: true, OutputType: TABULAR,
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) {
 			events, trunc := ParseTabularEvents(raw, 1000)
@@ -418,7 +418,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "tcpconnect", Binary: "tcpconnect", Category: "network",
 		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) {
 			events, trunc := ParseTabularEvents(raw, 1000)
@@ -429,7 +429,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "tcpaccept", Binary: "tcpaccept", Category: "network",
 		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) {
 			events, trunc := ParseTabularEvents(raw, 1000)
@@ -440,7 +440,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "tcplife", Binary: "tcplife", Category: "network",
 		NeedsRoot: true, OutputType: TABULAR, PIDFlag: "-p",
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) {
 			events, trunc := ParseTabularEvents(raw, 1000)
@@ -451,7 +451,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "udpconnect", Binary: "udpconnect", Category: "network",
 		NeedsRoot: true, OutputType: TABULAR,
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) {
 			events, trunc := ParseTabularEvents(raw, 1000)
@@ -462,7 +462,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "sofdsnoop", Binary: "sofdsnoop", Category: "network",
 		NeedsRoot: true, OutputType: TABULAR,
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) {
 			events, trunc := ParseTabularEvents(raw, 1000)
@@ -484,7 +484,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "skbdrop", Binary: "skbdrop", Category: "network",
 		NeedsRoot: true, OutputType: TRACING,
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) {
 			events, trunc := ParseTabularEvents(raw, 1000)
@@ -498,7 +498,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "oomkill", Binary: "oomkill", Category: "memory",
 		NeedsRoot: true, OutputType: TABULAR,
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) {
 			events, trunc := ParseTabularEvents(raw, 1000)
@@ -509,7 +509,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "shmsnoop", Binary: "shmsnoop", Category: "memory",
 		NeedsRoot: true, OutputType: TABULAR,
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) {
 			events, trunc := ParseTabularEvents(raw, 1000)
@@ -520,7 +520,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "drsnoop", Binary: "drsnoop", Category: "memory",
 		NeedsRoot: true, OutputType: TABULAR,
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) {
 			events, trunc := ParseTabularEvents(raw, 1000)
@@ -533,7 +533,7 @@ var Registry = map[string]*ToolSpec{
 		Name: "numamove", Binary: "numamove", Category: "memory",
 		NeedsRoot: true, OutputType: TABULAR,
 		BuildArgs: func(d time.Duration) []string {
-			return []string{formatDuration(d)}
+			return nil // event-based tool — no duration arg, killed by context timeout
 		},
 		Parser: func(raw string) (*model.Result, error) {
 			events, trunc := ParseTabularEvents(raw, 1000)
