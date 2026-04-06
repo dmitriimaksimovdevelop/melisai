@@ -303,3 +303,64 @@ func TestSkbdropParsesStacksAndEvents(t *testing.T) {
 		t.Error("expected kernel stacks from skbdrop")
 	}
 }
+
+// TestEventBasedToolsNoArgs verifies that event-based BCC tools
+// (tcpretrans, tcpdrop, oomkill, tcpstates) do NOT pass duration
+// as a positional argument. These tools don't accept duration — they
+// run until killed by context timeout. Passing duration causes errors
+// like "unrecognized arguments: 10". See issue #19.
+func TestEventBasedToolsNoArgs(t *testing.T) {
+	eventTools := []string{
+		// Issue #19: these tools don't accept duration as positional arg
+		"tcpretrans", "tcpdrop", "oomkill", "tcpstates",
+		// Event tracers — run until killed
+		"killsnoop", "threadsnoop", "syncsnoop", "exitsnoop",
+		"capable", "filelife", "mountsnoop", "mdflush", "cpufreq",
+		"tcpconnect", "tcpaccept", "tcplife", "udpconnect", "sofdsnoop",
+		"skbdrop", "shmsnoop", "drsnoop", "numamove",
+		// Positional arg is filter threshold, not duration
+		"tcpconnlat",    // arg = min_ms filter
+		"gethostlatency", // no positional args
+	}
+
+	for _, name := range eventTools {
+		t.Run(name, func(t *testing.T) {
+			tool, ok := Registry[name]
+			if !ok {
+				t.Fatalf("tool %q not in registry", name)
+			}
+			if tool.BuildArgs == nil {
+				t.Fatalf("tool %q has nil BuildArgs", name)
+			}
+
+			args := tool.BuildArgs(10 * time.Second)
+			if len(args) > 0 {
+				t.Errorf("tool %q BuildArgs(10s) = %v, want nil/empty (event-based tool should not pass duration)",
+					name, args)
+			}
+		})
+	}
+}
+
+// TestDurationToolsHaveArgs verifies that duration-based BCC tools
+// DO pass arguments (regression guard for the opposite direction).
+func TestDurationToolsHaveArgs(t *testing.T) {
+	durationTools := []string{"runqlat", "biolatency", "biosnoop", "opensnoop", "hardirqs", "softirqs"}
+
+	for _, name := range durationTools {
+		t.Run(name, func(t *testing.T) {
+			tool, ok := Registry[name]
+			if !ok {
+				t.Skipf("tool %q not in registry", name)
+			}
+			if tool.BuildArgs == nil {
+				t.Fatalf("tool %q has nil BuildArgs", name)
+			}
+
+			args := tool.BuildArgs(10 * time.Second)
+			if len(args) == 0 {
+				t.Errorf("tool %q BuildArgs(10s) returned empty args, expected duration arg", name)
+			}
+		})
+	}
+}
