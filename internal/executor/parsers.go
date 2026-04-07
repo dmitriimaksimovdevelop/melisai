@@ -12,8 +12,15 @@ import (
 	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
 )
 
-// ansiEscapeRe matches ANSI terminal escape sequences (e.g. color codes).
-var ansiEscapeRe = regexp.MustCompile(`\x1b\[[0-9;]*[mGKHF]`)
+// Pre-compiled regexes for hot-path parsers (avoid re-compilation per call).
+var (
+	// ansiEscapeRe matches ANSI terminal escape sequences (e.g. color codes).
+	ansiEscapeRe = regexp.MustCompile(`\x1b\[[0-9;]*[mGKHF]`)
+	// bucketRe matches BCC histogram bucket lines: "  0 -> 1  : 10  |**|"
+	bucketRe = regexp.MustCompile(`^\s*(\d+)\s*->\s*(\d+)\s*:\s*(\d+)`)
+	// diskSectionRe matches per-disk section headers: "disk = 'nvme0n1'"
+	diskSectionRe = regexp.MustCompile(`(?i)disk\s*=\s*'?(\w+)'?`)
+)
 
 // stripANSI removes ANSI terminal escape sequences from s.
 func stripANSI(s string) string {
@@ -40,9 +47,7 @@ func isPreambleLine(line string) bool {
 func ParseHistogram(raw string, name, unit string) (*model.Histogram, error) {
 	raw = stripANSI(raw)
 	lines := strings.Split(raw, "\n")
-	var buckets []model.HistBucket
-
-	bucketRe := regexp.MustCompile(`^\s*(\d+)\s*->\s*(\d+)\s*:\s*(\d+)`)
+	buckets := make([]model.HistBucket, 0, 32) // typical histogram has 10-30 buckets
 
 	for _, line := range lines {
 		matches := bucketRe.FindStringSubmatch(line)
@@ -114,20 +119,18 @@ func ParsePerDiskHistogram(raw string, unit string) ([]model.Histogram, error) {
 
 func splitDiskSections(raw string) map[string]string {
 	sections := make(map[string]string)
-	diskRe := regexp.MustCompile(`(?i)disk\s*=\s*'?(\w+)'?`)
-
 	lines := strings.Split(raw, "\n")
 	currentDisk := ""
-	var currentLines []string
+	currentLines := make([]string, 0, 64)
 
 	for _, line := range lines {
-		matches := diskRe.FindStringSubmatch(line)
+		matches := diskSectionRe.FindStringSubmatch(line)
 		if matches != nil {
 			if currentDisk != "" && len(currentLines) > 0 {
 				sections[currentDisk] = strings.Join(currentLines, "\n")
 			}
 			currentDisk = matches[1]
-			currentLines = nil
+			currentLines = currentLines[:0] // reuse backing array
 		} else if currentDisk != "" {
 			currentLines = append(currentLines, line)
 		}
@@ -213,7 +216,17 @@ func ParseTabularEvents(raw string, maxEvents int) ([]model.Event, bool) {
 		return nil, false
 	}
 
-	var events []model.Event
+	// Pre-lowercase headers once instead of per-event.
+	lowerHeaders := make([]string, len(headers))
+	for i, h := range headers {
+		lowerHeaders[i] = strings.ToLower(h)
+	}
+
+	capacity := len(lines) - headerIdx - 1
+	if maxEvents > 0 && capacity > maxEvents {
+		capacity = maxEvents
+	}
+	events := make([]model.Event, 0, capacity)
 	truncated := false
 
 	for _, line := range lines[headerIdx+1:] {
@@ -228,7 +241,7 @@ func ParseTabularEvents(raw string, maxEvents int) ([]model.Event, bool) {
 		}
 
 		event := model.Event{
-			Details: make(map[string]interface{}),
+			Details: make(map[string]interface{}, len(headers)),
 		}
 
 		// Iterate over the shorter of headers vs fields to handle mismatches.
@@ -238,8 +251,7 @@ func ParseTabularEvents(raw string, maxEvents int) ([]model.Event, bool) {
 		}
 
 		for i := 0; i < limit; i++ {
-			headerLower := strings.ToLower(headers[i])
-			switch headerLower {
+			switch lowerHeaders[i] {
 			case "time", "time(s)":
 				event.Time = fields[i]
 			case "pid":
@@ -249,9 +261,9 @@ func ParseTabularEvents(raw string, maxEvents int) ([]model.Event, bool) {
 			default:
 				// Try to parse as number, otherwise keep as string
 				if v, err := strconv.ParseFloat(fields[i], 64); err == nil {
-					event.Details[headerLower] = v
+					event.Details[lowerHeaders[i]] = v
 				} else {
-					event.Details[headerLower] = fields[i]
+					event.Details[lowerHeaders[i]] = fields[i]
 				}
 			}
 		}
@@ -272,7 +284,7 @@ func ParseTabularEvents(raw string, maxEvents int) ([]model.Event, bool) {
 // Format: "func1;func2;func3 count"
 func ParseFoldedStacks(raw string, stackType string) ([]model.StackTrace, error) {
 	lines := strings.Split(strings.TrimSpace(raw), "\n")
-	var stacks []model.StackTrace
+	stacks := make([]model.StackTrace, 0, len(lines))
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -405,8 +417,8 @@ func ParseTcpdrop(raw string, maxEvents int) (*model.Result, error) {
 // extractInlineStacks pulls kernel stack traces from inline output like tcpdrop.
 func extractInlineStacks(raw string) ([]model.StackTrace, error) {
 	lines := strings.Split(raw, "\n")
-	var stacks []model.StackTrace
-	var currentStack []string
+	stacks := make([]model.StackTrace, 0, 16)
+	currentStack := make([]string, 0, 32)
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)

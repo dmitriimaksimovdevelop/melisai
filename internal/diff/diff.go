@@ -34,14 +34,17 @@ type MetricChange struct {
 	Significance string  `json:"significance"` // "high", "medium", "low"
 }
 
-// LoadReport reads and parses a JSON report file.
+// LoadReport reads and parses a JSON report file using streaming decode
+// to avoid holding both raw bytes and parsed struct in memory simultaneously.
 func LoadReport(path string) (*model.Report, error) {
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
+		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
+	defer f.Close()
+
 	var report model.Report
-	if err := json.Unmarshal(data, &report); err != nil {
+	if err := json.NewDecoder(f).Decode(&report); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return &report, nil

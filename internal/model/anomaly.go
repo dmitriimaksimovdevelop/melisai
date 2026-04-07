@@ -14,8 +14,11 @@ type Threshold struct {
 
 // DefaultThresholds returns the built-in anomaly thresholds.
 // Based on Brendan Gregg's recommended thresholds.
-func DefaultThresholds() []Threshold {
-	return []Threshold{
+func DefaultThresholds() []Threshold { return defaultThresholds }
+
+// defaultThresholds is the singleton slice of anomaly rules, allocated once at
+// package init time to avoid re-creating 37 closures on every DetectAnomalies call.
+var defaultThresholds = []Threshold{
 		// CPU
 		{
 			Metric: "cpu_utilization", Category: "cpu",
@@ -743,7 +746,6 @@ func DefaultThresholds() []Threshold {
 				return fmt.Sprintf("GPU-NIC cross-NUMA: %.0f pair(s) on different NUMA nodes (PCIe DMA penalty)", v)
 			},
 		},
-	}
 }
 
 // histogramP99Evaluator returns an evaluator that searches for histograms
@@ -820,7 +822,7 @@ func extractDeviceName(histName string) string {
 func DetectAnomalies(report *Report) []Anomaly {
 	var anomalies []Anomaly
 
-	for _, threshold := range DefaultThresholds() {
+	for _, threshold := range defaultThresholds {
 		value, found := threshold.Evaluator(report)
 		if !found {
 			continue
