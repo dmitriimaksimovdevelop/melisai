@@ -147,11 +147,24 @@ func (e *BCCExecutor) Run(ctx context.Context, tool string, args []string, durat
 		raw.Truncated = true
 	}
 
-	// Diagnostic hint: empty stdout but non-empty stderr is unusual and often
-	// indicates the process was killed before it could flush output.
+	// Diagnostic hint: empty stdout but non-empty stderr is unusual. Classify
+	// common failure modes so users see a concise, actionable line instead of
+	// a multi-kilobyte C-compiler or Python stack dump.
 	if len(raw.Stdout) == 0 && len(raw.Stderr) > 0 {
-		log.Printf("[executor] %s: stdout empty, stderr=%q -- tool may have been killed before flushing output",
-			tool, raw.Stderr)
+		switch {
+		case strings.Contains(raw.Stderr, "Failed to compile BPF module"):
+			// Typical on Ubuntu 24.04 with bpfcc-tools 0.29: BCC's bundled
+			// libbpf headers lack BPF_CGROUP_UNIX_* enums that newer kernel
+			// headers reference. Not a melisai bug — tracked in issue #23.
+			log.Printf("[executor] %s: BCC failed to compile BPF program "+
+				"(kernel/BCC version mismatch; see https://github.com/dmitriimaksimovdevelop/melisai/issues/23)",
+				tool)
+		case strings.Contains(raw.Stderr, "Traceback"):
+			log.Printf("[executor] %s: BCC tool raised a Python exception; data unavailable", tool)
+		default:
+			log.Printf("[executor] %s: stdout empty, stderr=%.200q -- tool may have been killed before flushing output",
+				tool, raw.Stderr)
+		}
 	}
 
 	// Context errors (timeout/cancel) take priority; partial output is fine.

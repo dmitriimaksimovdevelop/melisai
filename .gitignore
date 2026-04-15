@@ -12,6 +12,10 @@ coverage.out
 dist/
 demo.tape
 
+# Generated BPF artifacts (produced by `make generate`)
+internal/ebpf/bpf/*.o
+internal/ebpf/c/vmlinux.h
+
 # IDE
 .idea/
 .vscode/

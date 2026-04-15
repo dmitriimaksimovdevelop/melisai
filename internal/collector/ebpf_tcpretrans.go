@@ -7,11 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
+	"github.com/cilium/ebpf/perf"
 	"github.com/dmitriimaksimovdevelop/melisai/internal/ebpf"
 	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
-	"github.com/cilium/ebpf/perf"
 )
 
 // TcpretransEvent must match the C struct in internal/ebpf/c/tcpretrans.bpf.c.
@@ -51,13 +52,17 @@ func (c *NativeTcpretransCollector) Available() Availability {
 	if !c.loader.CanLoad() {
 		return Availability{Tier: 0, Reason: "BTF/CO-RE unavailable"}
 	}
-	// Verify the compiled BPF object file exists
+	// Locate the BPF object — prefer embedded (release builds), fall back to
+	// the disk path for local dev builds produced by `make generate`.
 	for _, s := range ebpf.NativePrograms {
 		if s.Name == "tcpretrans" {
-			if _, err := os.Stat(s.ObjectFile); err != nil {
-				return Availability{Tier: 0, Reason: "BPF object file not found: " + s.ObjectFile}
+			if len(ebpf.LoadEmbeddedObject(filepath.Base(s.ObjectFile))) > 0 {
+				return Availability{Tier: 3}
 			}
-			return Availability{Tier: 3}
+			if _, err := os.Stat(s.ObjectFile); err == nil {
+				return Availability{Tier: 3}
+			}
+			return Availability{Tier: 0, Reason: "BPF object not embedded and not found on disk: " + s.ObjectFile}
 		}
 	}
 	return Availability{Tier: 0, Reason: "tcpretrans program spec not found"}

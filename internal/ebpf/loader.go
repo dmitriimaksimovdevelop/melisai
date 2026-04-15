@@ -1,9 +1,11 @@
 package ebpf
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
+	"path/filepath"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -75,9 +77,19 @@ func (l *Loader) TryLoad(ctx context.Context, spec *ProgramSpec) (*LoadedProgram
 		}
 	}
 
-	// 1. Load the compiled BPF object
-	// Object file path is relative to CWD or absolute.
-	collSpec, err := ebpf.LoadCollectionSpec(spec.ObjectFile)
+	// 1. Load the compiled BPF object.
+	// Prefer the object embedded at build time (via //go:embed in embed.go):
+	// this makes release binaries self-contained and independent of the
+	// working directory. When no embedded object is available (e.g. a
+	// local `go build` without `make generate`), fall back to the disk
+	// path encoded in ProgramSpec.ObjectFile.
+	var collSpec *ebpf.CollectionSpec
+	var err error
+	if data := LoadEmbeddedObject(filepath.Base(spec.ObjectFile)); len(data) > 0 {
+		collSpec, err = ebpf.LoadCollectionSpecFromReader(bytes.NewReader(data))
+	} else {
+		collSpec, err = ebpf.LoadCollectionSpec(spec.ObjectFile)
+	}
 	if err != nil {
 		return nil, &LoadError{Program: spec.Name, Err: fmt.Errorf("load spec: %w", err)}
 	}
