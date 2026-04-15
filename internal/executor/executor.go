@@ -9,9 +9,16 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
+
+// bufferPool reuses bytes.Buffer objects across BCC tool executions,
+// avoiding 67+ allocations per collection cycle.
+var bufferPool = sync.Pool{
+	New: func() interface{} { return new(bytes.Buffer) },
+}
 
 // RawOutput captures the stdout/stderr from an external tool.
 type RawOutput struct {
@@ -75,12 +82,18 @@ func (e *BCCExecutor) Run(ctx context.Context, tool string, args []string, durat
 	cmd.Env = e.security.SanitizeEnv()
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &LimitedWriter{W: &stdout, N: e.maxOutputBytes}
-	cmd.Stderr = &stderr
+	stdout := bufferPool.Get().(*bytes.Buffer)
+	stderr := bufferPool.Get().(*bytes.Buffer)
+	stdout.Reset()
+	stderr.Reset()
+	defer bufferPool.Put(stdout)
+	defer bufferPool.Put(stderr)
+
+	cmd.Stdout = &LimitedWriter{W: stdout, N: e.maxOutputBytes}
+	cmd.Stderr = stderr
 
 	if e.auditLog {
-		fmt.Fprintf(&stderr, "[AUDIT] exec: %s %s\n", binPath, strings.Join(args, " "))
+		fmt.Fprintf(stderr, "[AUDIT] exec: %s %s\n", binPath, strings.Join(args, " "))
 	}
 
 	// Use Start+Wait instead of Run to capture the child PID.

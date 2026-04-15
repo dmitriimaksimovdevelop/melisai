@@ -115,16 +115,29 @@ func GenerateAIPrompt(report *model.Report) *model.AIContext {
 		sb.WriteString("Pay special attention to these subsystems.\n")
 	}
 
-	// Stack trace hints
+	// Single-pass scan: collect hasStacks, hasHistograms, and Tier 2 empty stats
+	// in one loop instead of three separate traversals.
 	hasStacks := false
+	hasHistograms := false
+	tier2Total := 0
+	tier2Empty := 0
 	for _, results := range report.Categories {
 		for _, r := range results {
-			if len(r.Stacks) > 0 {
+			if !hasStacks && len(r.Stacks) > 0 {
 				hasStacks = true
-				break
+			}
+			if !hasHistograms && len(r.Histograms) > 0 {
+				hasHistograms = true
+			}
+			if r.Tier == 2 {
+				tier2Total++
+				if len(r.Histograms) == 0 && len(r.Events) == 0 && len(r.Stacks) == 0 {
+					tier2Empty++
+				}
 			}
 		}
 	}
+
 	if hasStacks {
 		sb.WriteString("\nStack traces are available. Analyze hot code paths and ")
 		sb.WriteString("identify contention points (futex, mutex, I/O waits).\n")
@@ -133,16 +146,6 @@ func GenerateAIPrompt(report *model.Report) *model.AIContext {
 		}
 	}
 
-	// Histogram hints
-	hasHistograms := false
-	for _, results := range report.Categories {
-		for _, r := range results {
-			if len(r.Histograms) > 0 {
-				hasHistograms = true
-				break
-			}
-		}
-	}
 	if hasHistograms {
 		sb.WriteString("\nLatency histograms are available. Focus on p99/p999 for ")
 		sb.WriteString("tail latency issues and multimodal distributions.\n")
@@ -151,21 +154,6 @@ func GenerateAIPrompt(report *model.Report) *model.AIContext {
 		}
 	}
 
-	// Empty BCC results warning: if more than 50% of Tier 2 results have no
-	// histograms, events, or stacks, warn the AI that data may be incomplete.
-	tier2Total := 0
-	tier2Empty := 0
-	for _, results := range report.Categories {
-		for _, r := range results {
-			if r.Tier != 2 {
-				continue
-			}
-			tier2Total++
-			if len(r.Histograms) == 0 && len(r.Events) == 0 && len(r.Stacks) == 0 {
-				tier2Empty++
-			}
-		}
-	}
 	if tier2Total > 0 && tier2Empty*2 > tier2Total {
 		sb.WriteString(fmt.Sprintf(
 			"\nWARNING: %d of %d BCC tools returned empty results. "+
