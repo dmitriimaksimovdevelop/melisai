@@ -29,3 +29,26 @@ jobs:
 
       - name: Vet
         run: go vet ./...
+
+  bpf-smoke:
+    name: BPF object smoke build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Install BPF toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm linux-tools-generic libbpf-dev
+          sudo ln -sf $(ls /usr/lib/linux-tools/*/bpftool | head -n1) /usr/local/bin/bpftool
+
+      - name: Generate embedded BPF objects
+        run: make generate
+
+      - name: Build with embedded objects
+        run: go build -v ./...

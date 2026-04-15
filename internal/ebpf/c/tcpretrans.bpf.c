@@ -1,7 +1,18 @@
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_core_read.h>
+#include <bpf/bpf_endian.h>
 #include <bpf/bpf_tracing.h>
+
+/* AF_INET / AF_INET6 are userspace socket constants and are not part of
+ * vmlinux.h. Redefine them locally so the CO-RE-relocatable object stays
+ * kernel-agnostic. */
+#ifndef AF_INET
+#define AF_INET  2
+#endif
+#ifndef AF_INET6
+#define AF_INET6 10
+#endif
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 

@@ -7,11 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
+	"github.com/cilium/ebpf/perf"
 	"github.com/dmitriimaksimovdevelop/melisai/internal/ebpf"
 	"github.com/dmitriimaksimovdevelop/melisai/internal/model"
-	"github.com/cilium/ebpf/perf"
 )
 
 // TcpretransEvent must match the C struct in internal/ebpf/c/tcpretrans.bpf.c.
@@ -51,13 +52,17 @@ func (c *NativeTcpretransCollector) Available() Availability {
 	if !c.loader.CanLoad() {
 		return Availability{Tier: 0, Reason: "BTF/CO-RE unavailable"}
 	}
-	// Verify the compiled BPF object file exists
+	// Locate the BPF object — prefer embedded (release builds), fall back to
+	// the disk path for local dev builds produced by `make generate`.
 	for _, s := range ebpf.NativePrograms {
 		if s.Name == "tcpretrans" {
-			if _, err := os.Stat(s.ObjectFile); err != nil {
-				return Availability{Tier: 0, Reason: "BPF object file not found: " + s.ObjectFile}
+			if len(ebpf.LoadEmbeddedObject(filepath.Base(s.ObjectFile))) > 0 {
+				return Availability{Tier: 3}
 			}
-			return Availability{Tier: 3}
+			if _, err := os.Stat(s.ObjectFile); err == nil {
+				return Availability{Tier: 3}
+			}
+			return Availability{Tier: 0, Reason: "BPF object not embedded and not found on disk: " + s.ObjectFile}
 		}
 	}
 	return Availability{Tier: 0, Reason: "tcpretrans program spec not found"}
@@ -121,24 +126,32 @@ func (c *NativeTcpretransCollector) Collect(ctx context.Context, cfg CollectConf
 			continue
 		}
 
-		var raw TcpretransEvent
-		// Copy logic (binary.Read is slow, unsafe casting in Go is tricky, manual parsing is best)
-		// For brevity using binary.Read
-		if err := binary.Read(bytes.NewReader(record.RawSample), binary.LittleEndian, &raw); err != nil {
-			continue
+		// Manual binary parsing — avoids reflection-heavy binary.Read and
+		// per-event bytes.NewReader allocation.
+		d := record.RawSample
+		pid := binary.LittleEndian.Uint32(d[0:4])
+		saddr := binary.LittleEndian.Uint32(d[4:8])
+		daddr := binary.LittleEndian.Uint32(d[8:12])
+		lport := binary.LittleEndian.Uint16(d[12:14])
+		dport := binary.LittleEndian.Uint16(d[14:16])
+		state := binary.LittleEndian.Uint32(d[16:20])
+
+		// Comm field starts at offset 24 (after type(1) + pad(3))
+		var comm string
+		if len(d) >= 40 {
+			comm = string(bytes.TrimRight(d[24:40], "\x00"))
 		}
 
-		// Convert to model.Event
 		evt := model.Event{
 			Time: time.Now().Format("15:04:05"),
-			Comm: string(bytes.TrimRight(raw.Comm[:], "\x00")),
-			PID:  int(raw.Pid),
+			Comm: comm,
+			PID:  int(pid),
 			Details: map[string]interface{}{
-				"laddr": fmt.Sprintf("%d.%d.%d.%d", byte(raw.Saddr), byte(raw.Saddr>>8), byte(raw.Saddr>>16), byte(raw.Saddr>>24)),
-				"daddr": fmt.Sprintf("%d.%d.%d.%d", byte(raw.Daddr), byte(raw.Daddr>>8), byte(raw.Daddr>>16), byte(raw.Daddr>>24)),
-				"lport": raw.Lport,
-				"dport": raw.Dport,
-				"state": raw.State,
+				"laddr": fmt.Sprintf("%d.%d.%d.%d", byte(saddr), byte(saddr>>8), byte(saddr>>16), byte(saddr>>24)),
+				"daddr": fmt.Sprintf("%d.%d.%d.%d", byte(daddr), byte(daddr>>8), byte(daddr>>16), byte(daddr>>24)),
+				"lport": lport,
+				"dport": dport,
+				"state": state,
 			},
 		}
 		events = append(events, evt)

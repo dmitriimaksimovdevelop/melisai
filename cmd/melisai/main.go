@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"runtime/pprof"
 	"strings"
 	"time"
 
@@ -82,6 +83,7 @@ Schema v1.1.0 with structured sub-objects for network, memory, GPU data.`,
 		collectMaxEvents int
 		collectQuiet     bool
 		collectVerbose   bool
+		collectPprof     string
 	)
 
 	collectCmd := &cobra.Command{
@@ -104,6 +106,19 @@ Examples:
   melisai collect --profile standard --focus network -o net.json
   melisai collect --profile deep --pid 12345 -o app.json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// CPU profiling for performance analysis of melisai itself.
+			if collectPprof != "" {
+				f, err := os.Create(collectPprof)
+				if err != nil {
+					return fmt.Errorf("create pprof file: %w", err)
+				}
+				defer f.Close()
+				if err := pprof.StartCPUProfile(f); err != nil {
+					return fmt.Errorf("start cpu profile: %w", err)
+				}
+				defer pprof.StopCPUProfile()
+			}
+
 			cfg := collector.DefaultConfig()
 			cfg.Profile = collectProfile
 			cfg.Version = version
@@ -169,6 +184,7 @@ Examples:
 	collectCmd.Flags().IntVar(&collectMaxEvents, "max-events", 1000, "Max events per collector")
 	collectCmd.Flags().BoolVarP(&collectQuiet, "quiet", "q", false, "Suppress progress output")
 	collectCmd.Flags().BoolVarP(&collectVerbose, "verbose", "v", false, "Enable debug logging")
+	collectCmd.Flags().StringVar(&collectPprof, "pprof", "", "Write CPU profile to file (e.g. melisai_cpu.prof)")
 
 	// --- install command ---
 	var installDryRun bool

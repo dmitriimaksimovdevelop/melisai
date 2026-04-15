@@ -9,9 +9,16 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
+
+// bufferPool reuses bytes.Buffer objects across BCC tool executions,
+// avoiding 67+ allocations per collection cycle.
+var bufferPool = sync.Pool{
+	New: func() interface{} { return new(bytes.Buffer) },
+}
 
 // RawOutput captures the stdout/stderr from an external tool.
 type RawOutput struct {
@@ -75,12 +82,18 @@ func (e *BCCExecutor) Run(ctx context.Context, tool string, args []string, durat
 	cmd.Env = e.security.SanitizeEnv()
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &LimitedWriter{W: &stdout, N: e.maxOutputBytes}
-	cmd.Stderr = &stderr
+	stdout := bufferPool.Get().(*bytes.Buffer)
+	stderr := bufferPool.Get().(*bytes.Buffer)
+	stdout.Reset()
+	stderr.Reset()
+	defer bufferPool.Put(stdout)
+	defer bufferPool.Put(stderr)
+
+	cmd.Stdout = &LimitedWriter{W: stdout, N: e.maxOutputBytes}
+	cmd.Stderr = stderr
 
 	if e.auditLog {
-		fmt.Fprintf(&stderr, "[AUDIT] exec: %s %s\n", binPath, strings.Join(args, " "))
+		fmt.Fprintf(stderr, "[AUDIT] exec: %s %s\n", binPath, strings.Join(args, " "))
 	}
 
 	// Use Start+Wait instead of Run to capture the child PID.
@@ -147,11 +160,24 @@ func (e *BCCExecutor) Run(ctx context.Context, tool string, args []string, durat
 		raw.Truncated = true
 	}
 
-	// Diagnostic hint: empty stdout but non-empty stderr is unusual and often
-	// indicates the process was killed before it could flush output.
+	// Diagnostic hint: empty stdout but non-empty stderr is unusual. Classify
+	// common failure modes so users see a concise, actionable line instead of
+	// a multi-kilobyte C-compiler or Python stack dump.
 	if len(raw.Stdout) == 0 && len(raw.Stderr) > 0 {
-		log.Printf("[executor] %s: stdout empty, stderr=%q -- tool may have been killed before flushing output",
-			tool, raw.Stderr)
+		switch {
+		case strings.Contains(raw.Stderr, "Failed to compile BPF module"):
+			// Typical on Ubuntu 24.04 with bpfcc-tools 0.29: BCC's bundled
+			// libbpf headers lack BPF_CGROUP_UNIX_* enums that newer kernel
+			// headers reference. Not a melisai bug — tracked in issue #23.
+			log.Printf("[executor] %s: BCC failed to compile BPF program "+
+				"(kernel/BCC version mismatch; see https://github.com/dmitriimaksimovdevelop/melisai/issues/23)",
+				tool)
+		case strings.Contains(raw.Stderr, "Traceback"):
+			log.Printf("[executor] %s: BCC tool raised a Python exception; data unavailable", tool)
+		default:
+			log.Printf("[executor] %s: stdout empty, stderr=%.200q -- tool may have been killed before flushing output",
+				tool, raw.Stderr)
+		}
 	}
 
 	// Context errors (timeout/cancel) take priority; partial output is fine.

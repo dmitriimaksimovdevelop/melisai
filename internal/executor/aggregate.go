@@ -28,7 +28,7 @@ func AggregateByField(events []model.Event, field string, topN int) *AggregatedR
 	for _, event := range events {
 		var key string
 		if val, ok := event.Details[field]; ok {
-			key = fmt.Sprintf("%v", val)
+			key = formatKey(val)
 		} else {
 			continue
 		}
@@ -38,7 +38,7 @@ func AggregateByField(events []model.Event, field string, topN int) *AggregatedR
 		}
 	}
 
-	var entries []AggregatedEntry
+	entries := make([]AggregatedEntry, 0, len(counts))
 	for key, count := range counts {
 		entries = append(entries, AggregatedEntry{
 			Key:    key,
@@ -83,9 +83,9 @@ func AggregateConnections(events []model.Event) *AggregatedResult {
 	for _, event := range events {
 		key := ""
 		if raddr, ok := event.Details["daddr"]; ok {
-			key = fmt.Sprintf("%v", raddr)
+			key = formatKey(raddr)
 		} else if raddr, ok := event.Details["raddr"]; ok {
-			key = fmt.Sprintf("%v", raddr)
+			key = formatKey(raddr)
 		}
 		if key == "" {
 			continue
@@ -102,7 +102,7 @@ func AggregateConnections(events []model.Event) *AggregatedResult {
 		}
 	}
 
-	var entries []AggregatedEntry
+	entries := make([]AggregatedEntry, 0, len(stats))
 	for key, s := range stats {
 		entry := AggregatedEntry{
 			Key:    key,
@@ -131,6 +131,22 @@ func AggregateConnections(events []model.Event) *AggregatedResult {
 	return &AggregatedResult{
 		TopByCount: entries,
 		TotalCount: total,
+	}
+}
+
+// formatKey converts an interface{} to string without reflection-heavy fmt.Sprintf.
+func formatKey(v interface{}) string {
+	switch val := v.(type) {
+	case string:
+		return val
+	case float64:
+		return strconv.FormatFloat(val, 'f', -1, 64)
+	case int:
+		return strconv.Itoa(val)
+	case int64:
+		return strconv.FormatInt(val, 10)
+	default:
+		return fmt.Sprintf("%v", v)
 	}
 }
 

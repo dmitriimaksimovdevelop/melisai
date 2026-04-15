@@ -34,6 +34,17 @@ jobs:
               with:
                   go-version: "1.24"
 
+            - name: Install BPF toolchain
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y clang llvm linux-tools-generic libbpf-dev
+                  # linux-tools-generic installs bpftool under a kernel-versioned path;
+                  # expose it on PATH for `make generate`.
+                  sudo ln -sf $(ls /usr/lib/linux-tools/*/bpftool | head -n1) /usr/local/bin/bpftool
+
+            - name: Generate embedded BPF objects
+              run: make generate
+
             - name: Run GoReleaser
               uses: goreleaser/goreleaser-action@v6
               with:
